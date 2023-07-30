@@ -35,16 +35,28 @@ A real photograph of text, deblurred using Fast-Method, then sharpened using the
 
 # Description of files
 Interface.java is the main class for the GUI.  It makes calls to most of the other files.
+
 ImageEffects.java creates the little effects pop-up boxes in the GUI.
+
 Algorithms.java contains most of the CPU-based implementations of the algorithms.
+
 GPUAlgorithms.java is the driver for running the algorithms on the GPU.
+
 FastMethod.cl is the OpenCL kernel implementation of the Fast-Method deconvolution algorithm.
+
 RichardsonLucy.cl is the OpenCL kernel implementation of the Richardson-Lucy deconvolution algorithm.
+
 DeblurOpenGL.java is the driver for performing the Fast-Method in OpenGL.
+
 fshader.glsl and vshader.glsl are the OpenGL implementation of the Fast-Method.
+
 VideoDecoder.java is the implementation for video decoding and processing using the Fast-Method.
+
 Deblur1D.java is the main class for running the Fast-Method in 1D.  It includes audio processing.
+
 WienerFilter.java is a Java-OpenCV implementation of Wiener deconvolution using the FFT.
+
 GPUProgram.java is a generic Java-to-OpenCL interfacing library.  (Basically glue code.)
+
 ShaderProgram.java is a generic Java-to-OpenGL interfacing library.  (Also just glue code.)
 
