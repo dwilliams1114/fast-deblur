@@ -22,7 +22,7 @@ public class Algorithms {
 	static int threadsCompleted = 0;
 	
 	// Whether to use the GPU when available
-	static boolean useGPU = true;
+	static boolean useOpenCL = true;
 	
 	// Whether to use the OpenGL implementation with the GLCanvas (overrides useGPU)
 	static boolean useOpenGL = false;
@@ -155,7 +155,7 @@ public class Algorithms {
 			// The image is drawn directly to the screen, so we don't need to return it
 			return null;
 			
-		} else if (useGPU) { // Render with OpenCL (GPU)
+		} else if (useOpenCL) { // Render with OpenCL (GPU)
 			
 			int width = image[0].length;
 			int height = image[0][0].length;
@@ -363,7 +363,7 @@ public class Algorithms {
 	// This function switches between the GPU and CPU
 	static float[][][] richardsonLucySwitch(final float[][][] image,
 					float radius, int iterations, boolean commit) {
-		if (useGPU) {
+		if (useOpenCL) {
 			GPUProgram.initializeGPU();
 			return GPUAlgorithms.deblurRichardsonLucyGPU(image, radius, iterations, commit);
 		} else {

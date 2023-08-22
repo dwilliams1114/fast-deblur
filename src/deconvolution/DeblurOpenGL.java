@@ -285,8 +285,12 @@ public class DeblurOpenGL {
 		
 		shader = new ShaderProgram(gl);
 		try {
-			shader.compileShader(gl, "src/deconvolution/vshader.glsl", GL2.GL_VERTEX_SHADER);
-			shader.compileShader(gl, "src/deconvolution/fshader.glsl", GL2.GL_FRAGMENT_SHADER);
+			String baseDir = "";
+			if (!Interface.isPackagedAsJar) {
+				baseDir = "src/deconvolution/";
+			}
+			shader.compileShader(gl, baseDir + "vshader.glsl", GL2.GL_VERTEX_SHADER);
+			shader.compileShader(gl, baseDir + "fshader.glsl", GL2.GL_FRAGMENT_SHADER);
 			shader.link(gl);
 		} catch (Exception e) {
 			e.printStackTrace();

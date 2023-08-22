@@ -28,6 +28,7 @@ public class ImageEffects {
 	static final int FAST_METHOD = 2;
 	static final int RICHARDSON_LUCY = 4;
 	static final int DISK_BLUR = 6;
+	static final int WIENER = 7;
 	
 	// This stores a scaled preview image that is displayed and manipulated in edit mode
 	static float[][][] previewImage;
@@ -415,11 +416,14 @@ public class ImageEffects {
 				} else if (effectType == RICHARDSON_LUCY) {
 					newImageArray = Algorithms.richardsonLucySwitch(
 							previewImage, option1 / divisor1, (int)(option2 / divisor2), commit);
+				} else if (effectType == WIENER) {
+					newImageArray = WienerFilter.wienerDeconvolvePublic(
+							previewImage, (int)(option1 / divisor1), (int)(option2 / divisor2));
 				} else if (effectType == DISK_BLUR) {
 					newImageArray = Algorithms.diskBlur(
 							previewImage, option1 / divisor1);
 				} else {
-					System.out.println("Effect not set");
+					System.err.println("Effect not set");
 					isRendering = false;
 					return;
 				}

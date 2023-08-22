@@ -34,9 +34,13 @@ public class GPUAlgorithms {
 		
 		// Create and execute the program on the GPU
 		if (fastMethodProgram == null) {
-			fastMethodProgram = new GPUProgram("fastMethod", "src/deconvolution/FastMethod.cl");
+			String baseDir = "";
+			if (!Interface.isPackagedAsJar) {
+				baseDir = "src/deconvolution/";
+			}
+			fastMethodProgram = new GPUProgram("fastMethod", baseDir + "FastMethod.cl");
 			fastMethodProgram.setGlobalWorkGroupSizes(width, height);
-			//deblurBasicProgram.setLocalWorkGroupSizes(64, 16);
+			//fastMethodProgram.setLocalWorkGroupSizes(64, 16);
 		}
 		
 		byte[] newApproximation = originalImage;
@@ -137,7 +141,11 @@ public class GPUAlgorithms {
 		
 		// Create and execute the program on the GPU
 		if (rlProgram == null) {
-			rlProgram = new GPUProgram("rlIteration", "src/deconvolution/RichardsonLucy.cl");
+			String baseDir = "";
+			if (!Interface.isPackagedAsJar) {
+				baseDir = "src/deconvolution/";
+			}
+			rlProgram = new GPUProgram("rlIteration", baseDir + "RichardsonLucy.cl");
 			rlProgram.setGlobalWorkGroupSizes(width, height);
 			
 			// This one is written over anyway, so we only need to initialize it once

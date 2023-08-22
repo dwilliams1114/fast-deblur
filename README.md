@@ -4,8 +4,9 @@ This repo contains various implementations of the "Fast-Method" deblur algorithm
 Libraries required to run the Java application are included.
 
 # Components
-This repo contains 4 components:
+This repo contains 5 components:
 - GUI for performing image deblurring with various algorithms (main method in Interface.java)
+- Pre-compiled Java executable of the GUI (in DeblurGUI)
 - Wiener deconvolution (main method in WienerFilter.java)
 - Video deconvolution using the Fast-Method (implementation in VideoDecoder.java)
 - One dimensional usage of the Fast-Method  (main in Deblur1D)
@@ -14,6 +15,7 @@ This repo contains 4 components:
 To run all the main code, you'll need Java-OpenCV, Java-OpenCL, Java-OpenGL, and Java-FFMPEG bindings.  All are included in the Libraries folder.
 The code was written for Windows x86_64.  If you're using something else, you'll have to find the libraries for your system.
 To set up in Eclipse IDE:
+1. Install Java JDK 18.0.2 or greater (but 1.8.0 works if you don't care about OpenGL)
 1. Import the project (fast-deblur is an Eclipse project)
 1. Right click on the project -> Properties -> Java Build Path -> Add Library -> User Library -> User Libraries -> New...
 1. Create a library named "OpenCV" and click "Add JARs".  Add Libraries/JavaCV/opencv-3415.jar.

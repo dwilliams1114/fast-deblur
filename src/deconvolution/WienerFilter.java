@@ -30,20 +30,25 @@ https://opencv-java-tutorials.readthedocs.io/en/latest/05-fourier-transform.html
 
 public class WienerFilter {
 	
+	private static boolean loadedOpenCVLibrary = false;
+	
 	public static void main(String[] args) {
 		
 		// Load the native OpenCV library
-		System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+		if (!loadedOpenCVLibrary) {
+			System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+			loadedOpenCVLibrary = true;
+		}
 		
-		Mat imgIn1 = loadImageFromFile("src/deconvolution/Results/Text 91.25.JPG");
-		Mat imgIn2 = loadImageFromFile("src/deconvolution/Results/Text 91.25.JPG");
+		Mat imgIn1 = loadImageFromFile("src/deconvolution/Results/JWST 1080 20.png");
+		Mat imgIn2 = loadImageFromFile("src/deconvolution/Results/JWST 1080 20.png");
 		//Mat imgIn1 = loadImageFromFile("src/deconvolution/Image Radius 12.png");
 		//Mat imgIn2 = loadImageFromFile("src/deconvolution/Image Radius 12.png");
 		final float[][][] blurred = Algorithms.scaleImage(matToFloatArr(imgIn1), 256);
 		final float[][][] original = Algorithms.scaleImage(matToFloatArr(imgIn2), 256);
 		
-		int snr = 800; // Signal-to-noise ratio
-		int blurRadius = 91; // Radius of disk blur
+		int snr = 3000; // Signal-to-noise ratio
+		int blurRadius = 20; // Radius of disk blur
 		
 		// Approximate amount by which to extend the border to eliminate unwanted edge-effects.
 		final int borderExpansion = (int)(Math.sqrt(snr) * blurRadius * 1.1 + 5);
@@ -102,7 +107,7 @@ public class WienerFilter {
 	// Compute and return the ideal padding size for this image.
 	// Take into account the DFT size and the padding needed to reduce edge effects in the Wiener deconvolution.
 	// Return the added [top, bottom, left, right] margin.
-	static int[] computePaddingForDFT(Mat inputImg, final int minBorder) {
+	private static int[] computePaddingForDFT(Mat inputImg, final int minBorder) {
 
 		// Ensure that some minimum amount of padding is added to eliminate edge effects
 		final int minRows = inputImg.rows() + minBorder;
@@ -120,20 +125,20 @@ public class WienerFilter {
 	}
 	
 	// Expand input image with the given margins.
-	static void padForDFT(Mat inputImg, final int[] margins) {
+	private static void padForDFT(Mat inputImg, final int[] margins) {
 		
 		// Extend the borders of the image
 		Core.copyMakeBorder(inputImg, inputImg, margins[0], margins[1], margins[2], margins[3], Core.BORDER_REPLICATE);
 	}
 	
 	// Crop the given image by the given amount
-	static Mat cropImage(Mat inputImg, final int[] margins) {
+	private static Mat cropImage(Mat inputImg, final int[] margins) {
 		return inputImg.submat(margins[0], inputImg.rows() - margins[1], margins[2], inputImg.cols() - margins[3]);
 	}
 	
 	// Read a Mat from the given file path.
 	// Matrix is returned in float32 format, normalized to [0,1).
-	static Mat loadImageFromFile(final String fileName) {
+	private static Mat loadImageFromFile(final String fileName) {
 		Mat imgIn = Imgcodecs.imread(fileName);
 		
 		if (imgIn.empty()) {
@@ -155,7 +160,7 @@ public class WienerFilter {
 	}
 	
 	// Scale the given buffered image
-	static BufferedImage rescaleImage(final BufferedImage inImage, final double scale) {
+	private static BufferedImage rescaleImage(final BufferedImage inImage, final double scale) {
 		final BufferedImage newImage = new BufferedImage(
 				(int)(inImage.getWidth() * scale),
 				(int)(inImage.getHeight() * scale),
@@ -169,7 +174,7 @@ public class WienerFilter {
 	}
 	
 	// Convert a matrix to a float array. [rgb][row][column]
-	static float[][][] matToFloatArr(final Mat m) {
+	private static float[][][] matToFloatArr(final Mat m) {
 		
 		float[][][] arr = new float[m.channels()][m.cols()][m.rows()];
 		
@@ -195,13 +200,13 @@ public class WienerFilter {
 	}
 	
 	// Show the given matrix in a JFrame
-	static void displayMatrix(Mat m) {
+	private static void displayMatrix(Mat m) {
 		BufferedImage image = matToBufferedImage(m);
 		displayImage(image);
 	}
 	
 	// Show the given buffered image in a JFrame
-	static void displayImage(BufferedImage img) {
+	private static void displayImage(BufferedImage img) {
 		JFrame frame = new JFrame("Image");
 		frame.setResizable(false);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -221,7 +226,7 @@ public class WienerFilter {
 	
 	// Convert the given matrix to a buffered image.
 	// The matrix may be grayscale or color, in any data type.
-	static BufferedImage matToBufferedImage(Mat m) {
+	private static BufferedImage matToBufferedImage(Mat m) {
 		
 		// Determine RGB or grayscale
 		int bufferedImageType = 0;
@@ -249,10 +254,100 @@ public class WienerFilter {
 		return newImage;
 	}
 	
+	// Convert a float[rgb][x][y] array into an OpenCV Mat
+	private static Mat floatArrayToMat(float[][][] image) {
+		final int width = image[0].length;
+		final int height = image[0][0].length;
+		final int channels = 3;
+		
+		Mat mat = new Mat(height, width, CvType.CV_32FC(channels));
+
+		float[] data = new float[channels];
+
+		for (int x = 0; x < width; x++) {
+		    for (int y = 0; y < height; y++) {
+		        for (int c = 0; c < channels; c++) {
+		            data[c] = image[c][x][y];
+		        }
+		        mat.put(y, x, data);
+		    }
+		}
+		
+		return mat;
+	}
+	
+	// Performs Wiener deconvolution on the given float[][][] array.
+	// This function is meant to be initiated by the GUI Interface.
+	// This is called in ImageEffects.java.
+	public static float[][][] wienerDeconvolvePublic(final float[][][] image, int blurRadius, int snr) {
+
+		Interface.setProcessName("Deblurring");
+		
+		// Load the native OpenCV library
+		if (!loadedOpenCVLibrary) {
+			System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+			loadedOpenCVLibrary = true;
+		}
+		
+		final long startTime = System.currentTimeMillis();
+		
+		final Mat imageMat = floatArrayToMat(image);
+		
+		// Exit early if the effect has been canceled
+		if (ImageEffects.isCanceled) {
+			return null;
+		}
+		
+		// Approximate amount by which to extend the border to eliminate unwanted edge-effects.
+		final int borderExpansion = (int)(Math.sqrt(snr) * blurRadius * 1.1 + 5);
+		
+		final int[] addedMargins = computePaddingForDFT(imageMat, borderExpansion);
+		final int newWidth =  imageMat.width() + addedMargins[2] + addedMargins[3];
+		final int newHeight = imageMat.height() + addedMargins[0] + addedMargins[1];
+		
+		// Compute the point-spread-function and Wiener filter ahead of time.
+		Mat psf = calcPSF(new Size(newWidth, newHeight), blurRadius);
+		Mat wienerFilter = calcWnrFilter(psf, 1.0 / snr);
+		
+		// Exit early if the effect has been canceled
+		if (ImageEffects.isCanceled) {
+			return null;
+		}
+		
+		// Extend the borders of the image
+		padForDFT(imageMat, addedMargins);
+		
+		// Exit early if the effect has been canceled
+		if (ImageEffects.isCanceled) {
+			return null;
+		}
+		
+		// Perform deconvolution
+		Mat imgOut1 = wienerDeconvolve(imageMat, wienerFilter);
+		
+		// Exit early if the effect has been canceled
+		if (ImageEffects.isCanceled) {
+			return null;
+		}
+		
+		// Crop the images back to the original size
+		imgOut1 = cropImage(imgOut1, addedMargins);
+		
+		Interface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+		Interface.updateProgress(1);
+		
+		// Exit early if the effect has been canceled
+		if (ImageEffects.isCanceled) {
+			return null;
+		}
+		
+		return matToFloatArr(imgOut1);
+	}
+	
 	// Compute the Wiener Filter and return the result.
 	// 'inputImg' is the image to be deblurred.
 	// 'wienerFilter' is the Wiener filter
-	static Mat wienerDeconvolve(final Mat inputImg, final Mat wienerFilter) {
+	private static Mat wienerDeconvolve(final Mat inputImg, final Mat wienerFilter) {
 		
 		// Extract red, green, blue components
 		final ArrayList<Mat> bgrPlanes = new ArrayList<Mat>(3);
@@ -363,7 +458,7 @@ public class WienerFilter {
 	}
 	
 	// Create a disk kernel
-	static Mat calcPSF(Size filterSize, int blurRadius) {
+	private static Mat calcPSF(Size filterSize, int blurRadius) {
 		Mat psr = new Mat(filterSize, CvType.CV_32F, new Scalar(0));
 		Point point = new Point(filterSize.width / 2, filterSize.height / 2);
 		
@@ -376,7 +471,7 @@ public class WienerFilter {
 		return psr;
 	}
 	
-	static Mat fftshift(final Mat inputImg) {
+	private static Mat fftshift(final Mat inputImg) {
 		Mat outputImg = inputImg.clone();
 		int cx = outputImg.cols() / 2;
 		int cy = outputImg.rows() / 2;
@@ -398,7 +493,7 @@ public class WienerFilter {
 	// Compute the Wiener filter, assuming S(f) = 1.  That is, the power spectral density is constant.
 	// 'inputPSR' is the point-spread-function of the same size as the image to be deblurred.
 	// 'nsr' is the noise-to-signal ratio
-	static Mat calcWnrFilter(final Mat inputPSF, double nsr) {
+	private static Mat calcWnrFilter(final Mat inputPSF, double nsr) {
 		Mat h_PSF_shifted = fftshift(inputPSF);
 		
 		ArrayList<Mat> planes = new ArrayList<Mat>(2);
@@ -432,7 +527,7 @@ public class WienerFilter {
 		return output_G;
 	}
 	
-	static void print(Object o) {
+	private static void print(Object o) {
 		System.out.println(o);
 	}
 }

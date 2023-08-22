@@ -2,7 +2,9 @@ package deconvolution;
 
 import java.awt.image.BufferedImage;
 
+import org.bytedeco.ffmpeg.global.avcodec;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
+import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
 
@@ -11,9 +13,12 @@ import gpuTesting.GPUProgram;
 // This class decodes and processes videos frame by frame
 
 public class VideoDecoder {
-
+	
+	// True when video is playing
+	public static boolean isVideoRunning = false;
+	
 	// Blur radius for the video (constant from start to end)
-	static private final float blurRadius = 21.0f;
+	static private float blurRadius = 20;
 	
 	// Number of iterations to run the deblurring algorithm (not used for OpenGL version)
 	static private final int deblurIterations = 1;
@@ -21,15 +26,54 @@ public class VideoDecoder {
 	// Previous video frame used for multithreaded video pipeline processing
 	static private BufferedImage previousVideoFrame;
 	
-	static void decodeVideoBytedeco() {
+	// Whether to save the processed video
+	static final boolean saveVideo = false;
+	static final String videoFileOutName = "D:/Video/Out1.mp4";
+	
+	// File to read in
+	static String videoFileInName = "D:/Video/Blurry/Playground 37.mp4";
+	
+	// Main method for video decoding
+	public static void main(String[] args) {
 		
-		final FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(
-				"D:/Video/Blurry/Squirrel Video 29.MP4");
+		Interface.setupFrame();
+		
+		/*
+		for (int i = 0; i < 10; i++) {
+			VideoDecoder.decodeVideoBytedeco();
+		}
+		//*/
+		
+		VideoDecoder.decodeVideoBytedeco(); // Use bytedeco OpenCV bindings
+		//VideoDecoder.decodeVideoJavaOpenCV(); // Use Java OpenCV bindings
+	}
+	
+	// Run video deconvolution using Bytedeco in a loop.
+	// Read the given video file.
+	// This is called by Interface.java.
+	public static void runLoopedVideoDeconvolution(String filePath, double deblurRadius) {
+		isVideoRunning = true;
+		new Thread(new Runnable() {
+			public void run() {
+				blurRadius = (float)deblurRadius;
+				videoFileInName = filePath;
+				while (true) {
+					VideoDecoder.decodeVideoBytedeco();
+				}
+			}
+		}).start();
+	}
+	
+	// Decode 
+	static void decodeVideoBytedeco() {
+		isVideoRunning = true;
 		
 		if (Interface.frame == null) {
 			print("Frame must be setup before processing video");
 			System.exit(1);
 		}
+		
+		final FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(videoFileInName);
 		
 		try {
 			grabber.start();
@@ -38,6 +82,20 @@ public class VideoDecoder {
 			int numFrames = grabber.getLengthInFrames();
 			final double timeLength = grabber.getLengthInTime() / 1000.0; // Now in milliseconds
 			
+			// Utilities for saving the processed video:
+			Java2DFrameConverter videoFrameConverter;
+			FFmpegFrameRecorder recorder;
+			if (saveVideo) {
+				videoFrameConverter = new Java2DFrameConverter();
+				recorder = new FFmpegFrameRecorder(videoFileOutName, width, height);
+				recorder.setVideoCodec(avcodec.AV_CODEC_ID_HEVC);
+				recorder.setAudioChannels(0);
+				recorder.setVideoBitrate(13000000);
+		        recorder.setFrameRate(grabber.getFrameRate());
+		        recorder.start();
+			}
+			
+			// Update on-screen statistics
 			Interface.imageInfoLabel.setText(width + "x" + height + " px, " +
 					numFrames + " frames, " + String.format("%.2f", grabber.getFrameRate()) + " fps");
 			
@@ -69,6 +127,9 @@ public class VideoDecoder {
 						do {
 							try {
 								frame = grabber.grab();
+								if (frame == null) {
+									break;
+								}
 							} catch (Exception e) {
 								e.printStackTrace();
 								System.exit(1);
@@ -105,7 +166,7 @@ public class VideoDecoder {
 					
 					criticalCodeTime = (System.nanoTime() - openGLStart) / 1000000.0;
 					
-				} else if (Algorithms.useGPU) { // Deblur using the GPU (OpenCL)
+				} else if (Algorithms.useOpenCL) { // Deblur using the GPU (OpenCL)
 					
 					GPUProgram.initializeGPU(); // Initialization only runs once
 					Interface.previewImage = previousVideoFrame;
@@ -118,6 +179,14 @@ public class VideoDecoder {
 					
 					// Update the GUI visual
 					Interface.redrawPreviewImage();
+					
+					// Save the video if desired
+					if (saveVideo) {
+						// Ignore the last frame
+						if (frameNum < numFrames - 2) {
+							recorder.record(videoFrameConverter.convert(previousVideoFrame));
+						}
+					}
 				
 				} else { // Deblur on the CPU (multithreaded)
 					
@@ -154,6 +223,12 @@ public class VideoDecoder {
 				frameNum++;
 			}
 			
+			// If we are also re-recording video
+			if (saveVideo) {
+				recorder.stop();
+				recorder.close();
+			}
+			
 			grabber.close();
 			long duration = System.currentTimeMillis() - startTime;
 			print("Processing rate: " + String.format("%.2f", 
@@ -171,6 +246,8 @@ public class VideoDecoder {
 				e.printStackTrace();
 			}
 		}
+        
+		isVideoRunning = false;
 	}
 	
 	static void print(Object o) {

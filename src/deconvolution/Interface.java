@@ -65,7 +65,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 // Created by Daniel Williams
 // Created on April 6, 2019 (copied from PhotoInterface merging program).
 // This program was created to test and perfect my fast deconvolution algorithm
-// Last updated on June 8, 2023
+// Last updated on August 21, 2023
 
 public class Interface {
 	private static int X = 900;
@@ -106,6 +106,9 @@ public class Interface {
 	// The last kernel used by the deblurring algorithm
 	static float[][] lastKernel;
 	
+	// True if this program is running as a JAR file
+	static boolean isPackagedAsJar;
+	
 	// Various Java Swing window components
 	static JFrame frame;
 	private static JLabel statusLabel = new JLabel("", SwingConstants.LEFT);
@@ -120,12 +123,13 @@ public class Interface {
 	
 	public static void main(String[] args) {
 		
+		// Determine if we are running from inside a JAR file
+		isPackagedAsJar = !new File("src").exists();
+		
 		setupFrame();
 		
-		//VideoDecoder.decodeVideoBytedeco(); // Use bytedeco OpenCV bindings
-		
 		/* Measure NRMSE of a processed image
-		Algorithms.useGPU = true;
+		Algorithms.useOpenCL = true;
 		final BufferedImage rawImageBlur = loadImageFromFile(new File("src/deconvolution/Results/JWST 512 64.png"));
 		final BufferedImage rawImageOrig = loadImageFromFile(new File("src/deconvolution/Results/JWST 512.png"));
 		float[][][] originalBlur = Algorithms.imageToArray(rawImageBlur);
@@ -142,7 +146,7 @@ public class Interface {
 		//*/
 		
 		/* Process and display an image
-		Algorithms.useGPU = true;
+		Algorithms.useOpenCL = true;
 		final BufferedImage rawImage = loadImageFromFile(new File("src/deconvolution/Results/Text 91.25.JPG"));
 		float[][][] image1 = Algorithms.imageToArray(rawImage);
 		//image1 = Algorithms.fastBlur(image1, 10);
@@ -247,8 +251,9 @@ public class Interface {
 			BufferedImage image = new BufferedImage(temp.getWidth(), temp.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
 			Graphics2D g = image.createGraphics();
 			g.drawImage(temp, 0, 0, null);
+			g.dispose();
 			
-			renderExperimentalGraph = file.getName().startsWith("Line Gray");
+			renderExperimentalGraph = file.getName().toLowerCase().startsWith("test section");
 			
 			return image;
 		} catch (Exception e) {
@@ -275,7 +280,14 @@ public class Interface {
 			lastFileDirectory = folder;
 		}
 		
-		previewImage = loadImageFromFile(file);
+		// Load the image
+		BufferedImage image = loadImageFromFile(file);
+		loadBufferedImage(image);
+	}
+	
+	// Load the given buffered image into the program for viewing and processing
+	private static void loadBufferedImage(BufferedImage newImage) {
+		previewImage = newImage;
 		
 		// Convert the BufferedImage to a float array
 		Algorithms.imageArray = Algorithms.imageToArray(previewImage);
@@ -484,8 +496,25 @@ public class Interface {
 		return false;
 	}
 	
+	// Prompt the user for the deblur radius
+	// before playing a video.
+	static double promptVideoDeblurRadius() {
+		JSpinner spinner = new JSpinner(new SpinnerNumberModel(8.0, 0.25, 256, 0.25));
+        int option = JOptionPane.showOptionDialog(frame, spinner,
+        		"Enter the blur radius", JOptionPane.OK_CANCEL_OPTION,
+        		JOptionPane.QUESTION_MESSAGE, null, null, null);
+        if (option == JOptionPane.OK_OPTION) {
+            final double blurRadius = (Double)spinner.getValue();
+            
+            return blurRadius;
+            
+        } else {
+            return -1;
+        }
+	}
+	
 	// Initialize the graphic window
-	private static void setupFrame() {
+	static void setupFrame() {
 		
 		try {
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); 
@@ -698,6 +727,31 @@ public class Interface {
 			}
 		});
 		
+		final JButton deblurButton8 = new JButton("Wiener...");
+		deblurButton8.setToolTipText("wienerDeconvolvePublic()");
+		deblurButton8.setEnabled(false);
+		deblurButton8.setPreferredSize(new Dimension(140, 25));
+		deblurButton8.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				
+				// Prevent usage with OpenGL
+				if (Algorithms.useOpenGL) {
+					JOptionPane.showMessageDialog(Interface.frame,
+							"Wiener deconvolution not implemented in OpenGL",
+							"OpenGL Limitation",
+							JOptionPane.ERROR_MESSAGE);
+					return;
+				}
+				
+				ImageEffects.showEffectDialogue("Wiener deconvolution", ImageEffects.WIENER,
+						"Radius", 1, 100, 4, 1,
+						"Signal-to-noise ratio", 100, 5100, 2500, 1,
+						null, 0, 0, 0, 0,
+						null, 0, 0, 0, 0,
+						null, 0, 0, 0, 0);
+			}
+		});
+		
 		final JButton deblurButton7 = new JButton("Disk Blur...");
 		deblurButton7.setToolTipText("Perfect defocus disk blur");
 		deblurButton7.setEnabled(false);
@@ -746,10 +800,10 @@ public class Interface {
 		final ActionListener renderRadioButtonListener = new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				if (useCPUCheck.isSelected()) {
-					Algorithms.useGPU = false;
+					Algorithms.useOpenCL = false;
 					Algorithms.useOpenGL = false;
 				} else {
-					Algorithms.useGPU = useGPUCheck.isSelected();
+					Algorithms.useOpenCL = useGPUCheck.isSelected();
 					Algorithms.useOpenGL = useOpenGLCheck.isSelected();
 				}
 				
@@ -761,13 +815,13 @@ public class Interface {
 			}
 		};
 		
-		useGPUCheck.setSelected(Algorithms.useGPU);
+		useGPUCheck.setSelected(Algorithms.useOpenCL);
 		useGPUCheck.addActionListener(renderRadioButtonListener);
 		
 		useOpenGLCheck.setSelected(Algorithms.useOpenGL);
 		useOpenGLCheck.addActionListener(renderRadioButtonListener);
 		
-		useCPUCheck.setSelected(!Algorithms.useGPU && !Algorithms.useOpenGL);
+		useCPUCheck.setSelected(!Algorithms.useOpenCL && !Algorithms.useOpenGL);
 		useCPUCheck.addActionListener(renderRadioButtonListener);
 		
 		final ButtonGroup buttonGroup = new ButtonGroup();
@@ -926,7 +980,7 @@ public class Interface {
 				
 				final JFileChooser chooser = new JFileChooser(lastFileDirectory);
 				FileNameExtensionFilter filter1 = new FileNameExtensionFilter(
-					"JPG & PNG Images", "jpg", "png", "jpeg");
+					"JPG/PNG/MP4/MPEG", "jpg", "png", "jpeg", "mp4", "m4v", "m4p", "mpg", "mpeg");
 				chooser.setFileFilter(filter1);
 				chooser.setMultiSelectionEnabled(false);
 				chooser.setDragEnabled(true);
@@ -938,18 +992,44 @@ public class Interface {
 				if (returnVal == JFileChooser.APPROVE_OPTION) {
 					final File file = chooser.getSelectedFile();
 					
-					// Read the image and prepare it
-					loadImage(file);
+					String fileName = file.getName().toLowerCase();
 					
-					// Enable the manipulation options
-                    resetImageButton.setEnabled(true);
-    				adjustmentLabel.setEnabled(true);
-    				contrastButton.setEnabled(true);
-    				sharpenButton.setEnabled(true);
-    				deblurButton3.setEnabled(true);
-    				deblurButton5.setEnabled(true);
-    				deblurButton7.setEnabled(true);
-    				saveButton.setEnabled(true);
+					// Check if this is a video file
+					if (fileName.endsWith(".mp4") ||
+							fileName.endsWith(".m4v") ||
+							fileName.endsWith(".m4p") ||
+							fileName.endsWith(".mpg") ||
+							fileName.endsWith(".mpeg")) {
+						
+						// Don't allow video decoding while another is running
+            			if (VideoDecoder.isVideoRunning) {
+            				return;
+            			}
+            			
+            			final double deblurRadius = promptVideoDeblurRadius();
+            			if (deblurRadius <= 0) {
+            				return;
+            			}
+            			
+            			// Display the video in a loop
+                        VideoDecoder.runLoopedVideoDeconvolution(file.getAbsolutePath(), deblurRadius);
+                        
+					} else { // Read as image
+					
+						// Read the image and prepare it
+						loadImage(file);
+						
+						// Enable the manipulation options
+	                    resetImageButton.setEnabled(true);
+	    				adjustmentLabel.setEnabled(true);
+	    				contrastButton.setEnabled(true);
+	    				sharpenButton.setEnabled(true);
+	    				deblurButton3.setEnabled(true);
+	    				deblurButton5.setEnabled(true);
+	    				deblurButton7.setEnabled(true);
+	    				deblurButton8.setEnabled(true);
+	    				saveButton.setEnabled(true);
+					}
 				}
 			}
 		});
@@ -968,6 +1048,7 @@ public class Interface {
 		leftPanel.add(sharpenButton);
 		leftPanel.add(deblurButton3);
 		leftPanel.add(deblurButton5);
+		leftPanel.add(deblurButton8);
 		leftPanel.add(deblurButton7);
 		leftPanel.add(threadsLabel);
 		leftPanel.add(threadsSpinner);
@@ -1008,27 +1089,49 @@ public class Interface {
                         	
                         	// Check to make sure the file is of a valid type
                         	String name = file.getName().toLowerCase();
-                    		if (!name.endsWith("jpg") &&
-                    				!name.endsWith("jpeg") &&
-                    				!name.endsWith("png")) {
+                    		if (name.endsWith(".jpg") ||
+                    				name.endsWith(".jpeg") ||
+                    				name.endsWith(".png")) {
+                    			
+                    			e.dropComplete(true);
+                    			
+                    			// Enable the manipulation options
+                                resetImageButton.setEnabled(true);
+                				adjustmentLabel.setEnabled(true);
+                				contrastButton.setEnabled(true);
+                				sharpenButton.setEnabled(true);
+                				deblurButton3.setEnabled(true);
+                				deblurButton5.setEnabled(true);
+                				deblurButton7.setEnabled(true);
+                				deblurButton8.setEnabled(true);
+                				saveButton.setEnabled(true);
+            					
+        						// Read the image and prepare it
+                				loadImage(file);
+                				
+                    		} else if (name.endsWith(".mp4") ||
+                    				name.endsWith(".m4v") ||
+                    				name.endsWith(".m4p") ||
+                    				name.endsWith(".mpg") ||
+                    				name.endsWith(".mpeg")) {
+                    			
+                    			// Don't allow video decoding while another is running
+                    			if (VideoDecoder.isVideoRunning) {
+                    				return;
+                    			}
+                    			
+                    			e.dropComplete(true);
+                    			
+                    			final double deblurRadius = promptVideoDeblurRadius();
+                    			if (deblurRadius <= 0) {
+                    				return;
+                    			}
+                    			
+                    			// Display the video in a loop
+                                VideoDecoder.runLoopedVideoDeconvolution(file.getAbsolutePath(), deblurRadius);
+                    		} else {
                     			e.dropComplete(false);
-                    			return;
                     		}
-        					
-                            e.dropComplete(true);
-                            
-            				// Enable the manipulation options
-                            resetImageButton.setEnabled(true);
-            				adjustmentLabel.setEnabled(true);
-            				contrastButton.setEnabled(true);
-            				sharpenButton.setEnabled(true);
-            				deblurButton3.setEnabled(true);
-            				deblurButton5.setEnabled(true);
-            				deblurButton7.setEnabled(true);
-            				saveButton.setEnabled(true);
-    						
-    						// Read the image and prepare it
-            				loadImage(file);
                         }
 	                } else {
 	                    e.rejectDrop();
@@ -1097,6 +1200,47 @@ public class Interface {
 						
 						// Redraw the preview of the image
 						redrawPreviewImage();
+						
+					} else if (e.getKeyCode() == KeyEvent.VK_V && e.isControlDown()) {
+						// Paste an image
+						Transferable transferable = Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null);
+						if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+							try {
+								BufferedImage temp = (BufferedImage) transferable.getTransferData(DataFlavor.imageFlavor);
+								
+								// Convert to byte format
+								BufferedImage image = new BufferedImage(temp.getWidth(), temp.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+								Graphics2D g = image.createGraphics();
+								g.drawImage(temp, 0, 0, null);
+								g.dispose();
+								
+								// Enable the manipulation options
+	                            resetImageButton.setEnabled(true);
+	            				adjustmentLabel.setEnabled(true);
+	            				contrastButton.setEnabled(true);
+	            				sharpenButton.setEnabled(true);
+	            				deblurButton3.setEnabled(true);
+	            				deblurButton5.setEnabled(true);
+	            				deblurButton7.setEnabled(true);
+	            				deblurButton8.setEnabled(true);
+	            				saveButton.setEnabled(true);
+	    						
+	    						// Read the image and prepare it
+	            				fileName = "clipboard";
+	            				fileDirectory = null;
+	            				
+	            				setProcessName("Loaded image " + fileName);
+	            				
+	            				// Show the image filename
+	            				imageNameLabel.setText(fileName);
+	            				
+	            				// Load the image
+	            				loadBufferedImage(image);
+	            				
+							} catch (Exception e2) {
+								e2.printStackTrace();
+							}
+						}
 					}
 				}
 				
