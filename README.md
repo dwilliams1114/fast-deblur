@@ -2,14 +2,14 @@
 This repo contains various implementations of the "Fast-Method" deblur algorithm, as well as a GUI for easy usage.
 "Fast-Method" is described in the paper "A fast, simple, and parallelizable deconvolution algorithm for real-time applications" by Daniel Williams in SPIE.
 Libraries required to run the Java application are included.
+More details on the algorithm are found at https://danielwilliams.tech/fast-deblur.
 
 # Components
-This repo contains 5 components:
+This repo contains 4 components:
 - GUI for performing image deblurring with various algorithms (main method in Interface.java)
-- Pre-compiled Java executable of the GUI (in DeblurGUI)
-- Wiener deconvolution (main method in WienerFilter.java)
-- Video deconvolution using the Fast-Method (implementation in VideoDecoder.java)
-- One dimensional usage of the Fast-Method  (main in Deblur1D)
+- Pre-compiled Java executable of the GUI (in DeblurGUI.java)
+- One dimensional usage of the Fast-Method  (main in Deblur1D.java)
+- C implementations for one and two dimensions (in C folder, Deblur1D.c and Deblur2D.c)
 
 # Setup in Eclipse IDE
 To run all the main code, you'll need Java-OpenCV, Java-OpenCL, Java-OpenGL, and Java-FFMPEG bindings.  All are included in the Libraries folder.
@@ -26,7 +26,7 @@ To set up in Eclipse IDE:
 1. Expand the Java2D -> JOCL-0.2.0RC.jar
 1. Click on "Native library location" and browse to "fast-deblur/Java2D".
 1. Create a library named "OpenCV_FFMPEG" and click "Add JARs".  Add all JARs in Libraries/OpenCV_FFMPEG/.
-1. All the errors dissappear and everything works perfectly on the first try. :joy:
+1. All the errors disappear and everything works perfectly on the first try. :joy:
 
 # Images
 The GUI:
@@ -36,29 +36,17 @@ A real photograph of text, deblurred using Fast-Method, then sharpened using the
 ![Blurry text on left, deblurred text on right](/Images/FastMethod_Example.png)
 
 # Description of files
-Interface.java is the main class for the GUI.  It makes calls to most of the other files.
-
-ImageEffects.java creates the little effects pop-up boxes in the GUI.
-
-Algorithms.java contains most of the CPU-based implementations of the algorithms.
-
-GPUAlgorithms.java is the driver for running the algorithms on the GPU.
-
-FastMethod.cl is the OpenCL kernel implementation of the Fast-Method deconvolution algorithm.
-
-RichardsonLucy.cl is the OpenCL kernel implementation of the Richardson-Lucy deconvolution algorithm.
-
-DeblurOpenGL.java is the driver for performing the Fast-Method in OpenGL.
-
-fshader.glsl and vshader.glsl are the OpenGL implementation of the Fast-Method.
-
-VideoDecoder.java is the implementation for video decoding and processing using the Fast-Method.
-
-Deblur1D.java is the main class for running the Fast-Method in 1D.  It includes audio processing.
-
-WienerFilter.java is a Java-OpenCV implementation of Wiener deconvolution using the FFT.
-
-GPUProgram.java is a generic Java-to-OpenCL interfacing library.  (Basically glue code.)
-
-ShaderProgram.java is a generic Java-to-OpenGL interfacing library.  (Also just glue code.)
-
+- Interface.java is the main class for the GUI.  It makes calls to most of the other files.
+- ImageEffects.java creates the little effects pop-up boxes in the GUI.
+- Algorithms.java contains most of the CPU-based implementations of the algorithms.
+- GPUAlgorithms.java is the driver for running the algorithms on the GPU.
+- FastMethod.cl is the OpenCL kernel implementation of the Fast-Method deconvolution algorithm.
+- RichardsonLucy.cl is the OpenCL kernel implementation of the Richardson-Lucy deconvolution algorithm.
+- DeblurOpenGL.java is the driver for performing the Fast-Method in OpenGL.
+- fshader.glsl and vshader.glsl are the OpenGL implementation of the Fast-Method.
+- VideoDecoder.java is the implementation for video decoding and processing using the Fast-Method.
+- Deblur1D.java is the main class for running the Fast-Method in 1D.  It includes audio processing.
+- WienerFilter.java is a Java-OpenCV implementation of Wiener deconvolution using the FFT.
+- GPUProgram.java is a generic Java-to-OpenCL interfacing library.  (Basically glue code.)
+- ShaderProgram.java is a generic Java-to-OpenGL interfacing library.  (Also just glue code.)
+- The C folder contains minimalistic C implementations of the Fast-Method algorithm.
