@@ -26,6 +26,10 @@ To set up in Eclipse IDE:
 1. Expand the Java2D -> JOCL-0.2.0RC.jar
 1. Click on "Native library location" and browse to "fast-deblur/Java2D".
 1. Create a library named "OpenCV_FFMPEG" and click "Add JARs".  Add all JARs in Libraries/OpenCV_FFMPEG/.
+1. Open the Run Configurations for the main class, Interface.java
+1. Switch to the "Arguments" tab
+1. Under "VM Arguments", add: `--add-exports java.base/java.lang=ALL-UNNAMED` `--add-exports java.desktop/sun.awt=ALL-UNNAMED` `--add-exports java.desktop/sun.java2d=ALL-UNNAMED`.
+1. Click "Run".  It will always run with these arguments now.
 1. All the errors disappear and everything works perfectly on the first try. :joy:
 
 # Images
