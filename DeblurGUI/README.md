@@ -2,4 +2,5 @@ Pre-compiled Java application for running the GUI.  This probably only runs on W
 
 # To Run:
 1. Install Java JDK 18.02
-1. Double click Launch.bat
+1. On Windows: Double click Run-windows.bat
+1. On Mac/Linux: Use command line to run Run-mac.sh or double click DeblurGUI.jar.

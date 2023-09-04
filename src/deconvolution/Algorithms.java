@@ -668,7 +668,7 @@ public class Algorithms {
 	
 	// Deblur the image using the inverse blur kernel (also known as 'sharpen' effect).
 	// Radius is a minimum of 0.5.
-	// The blur algorithm only removes brokeh blurs
+	// The blur algorithm only removes bokeh blurs
 	static float[][][] sharpen(final float[][][] image, float weight, final float radius) {
 		Interface.setProcessName("Sharpening");
 		

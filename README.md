@@ -54,3 +54,4 @@ A real photograph of text, deblurred using Fast-Method, then sharpened using the
 - GPUProgram.java is a generic Java-to-OpenCL interfacing library.  (Basically glue code.)
 - ShaderProgram.java is a generic Java-to-OpenGL interfacing library.  (Also just glue code.)
 - The C folder contains minimalistic C implementations of the Fast-Method algorithm.
+- DeblurGUI.jar is an executable JAR for the GUI.  Use "Run-windows.bat" or "Run-mac.sh" to execute it.
