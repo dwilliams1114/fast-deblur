@@ -6,9 +6,9 @@ More details on the algorithm are found at https://danielwilliams.tech/fast-debl
 
 # Components
 This repo contains 4 components:
-- GUI for performing image deblurring with various algorithms (main method in Interface.java)
-- Pre-compiled Java executable of the GUI (in DeblurGUI.java)
-- One dimensional usage of the Fast-Method  (main in Deblur1D.java)
+- GUI using the deblurring algorithms (main method in UserInterface.java)
+- A compiled Java executable of the GUI (in the DeblurGUI folder)
+- One-dimensional usage of the Fast-Method (main method in Deblur1D.java)
 - C implementations for one and two dimensions (in C folder, Deblur1D.c and Deblur2D.c)
 
 # Setup in Eclipse IDE
@@ -26,7 +26,7 @@ To set up in Eclipse IDE:
 1. Expand the Java2D -> JOCL-0.2.0RC.jar
 1. Click on "Native library location" and browse to "fast-deblur/Java2D".
 1. Create a library named "OpenCV_FFMPEG" and click "Add JARs".  Add all JARs in Libraries/OpenCV_FFMPEG/.
-1. Open the Run Configurations for the main class, Interface.java
+1. Open the Run Configurations for the main class, UserInterface.java
 1. Switch to the "Arguments" tab
 1. Under "VM Arguments", add: `--add-exports java.base/java.lang=ALL-UNNAMED` `--add-exports java.desktop/sun.awt=ALL-UNNAMED` `--add-exports java.desktop/sun.java2d=ALL-UNNAMED`.
 1. Click "Run".  It will always run with these arguments now.
@@ -40,7 +40,7 @@ A real photograph of text, deblurred using Fast-Method, then sharpened using the
 ![Blurry text on left, deblurred text on right](/Images/FastMethod_Example.png)
 
 # Description of files
-- Interface.java is the main class for the GUI.  It makes calls to most of the other files.
+- UserInterface.java is the main class for the GUI.  It makes calls to most of the other files.
 - ImageEffects.java creates the little effects pop-up boxes in the GUI.
 - Algorithms.java contains most of the CPU-based implementations of the algorithms.
 - GPUAlgorithms.java is the driver for running the algorithms on the GPU.

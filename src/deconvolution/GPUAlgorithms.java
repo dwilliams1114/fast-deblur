@@ -1,6 +1,7 @@
 package deconvolution;
 
-import gpuTesting.GPUProgram;
+import gpuAbstraction.GPUMem;
+import gpuAbstraction.GPUProgram;
 
 // This class contains all of the algorithms that run on the GPU
 
@@ -9,20 +10,27 @@ public class GPUAlgorithms {
 	// This is for deblurring on the GPU only
 	static GPUProgram fastMethodProgram;
 	static GPUProgram rlProgram;
+	static GPUProgram sharpenProgram;
 	
 	// Basic deblurring function with GPU acceleration.  This requires an outside OpenCL file "fastMethod.cl"
 	// Programmed by Daniel Williams on April 29, 2019 - June 4, 2022
 	static float[][][] fastMethodGPU(final byte[] originalImage, int iterations, int width, int height,
 			final float amountOffset, float radius, boolean commit) {
 		
-		Interface.setProcessName("Deblurring");
+		UserInterface.setProcessName("Deblurring");
 		
 		final long startTime = System.currentTimeMillis();
 		
 		// Generate the blur kernel
 		final int[] coords1 = Algorithms.generateCircle(radius);
 		final int[] coords2 = Algorithms.generateCircle(radius + 1);
-		final int[] coordsOuter = Algorithms.generateCircleQuarterDensity(radius * 2); // Skip 75% of pixels for speed.
+		final int[] coordsOuter;
+		if (radius <= 3) {
+			coordsOuter = Algorithms.generateCircle(radius * 2 + 0.5f);
+		} else {
+			// Skip 75% of pixels for speed on larger blur radiuses.
+			coordsOuter = Algorithms.generateCircleQuarterDensity(radius * 2 + 0.5f);
+		}
 		final int coords1Count = coords1.length/2;
 		final int coords2Count = coords2.length/2;
 		final int coordsOuterCount = coordsOuter.length/2;
@@ -35,21 +43,20 @@ public class GPUAlgorithms {
 		// Create and execute the program on the GPU
 		if (fastMethodProgram == null) {
 			String baseDir = "";
-			if (!Interface.isPackagedAsJar) {
+			if (!UserInterface.isPackagedAsJar) {
 				baseDir = "src/deconvolution/";
 			}
 			fastMethodProgram = new GPUProgram("fastMethod", baseDir + "FastMethod.cl");
 			fastMethodProgram.setGlobalWorkGroupSizes(width, height);
-			//fastMethodProgram.setLocalWorkGroupSizes(64, 16);
 		}
 		
 		byte[] newApproximation = originalImage;
 		
 		// Create the image to write to (as a single dimensional int array)
-		final byte[] linearOutImage = Algorithms.extractByteArray(Interface.previewImage);
-
-		fastMethodProgram.setArgument(0, linearOutImage, GPUProgram.WRITE);
-		fastMethodProgram.setArgument(1, newApproximation, GPUProgram.READ);
+		final byte[] linearOutImage = Algorithms.extractByteArray(UserInterface.previewImage);
+		
+		GPUMem mem1 = fastMethodProgram.setArgument(0, linearOutImage, GPUProgram.WRITE);
+		GPUMem mem2 = fastMethodProgram.setArgument(1, newApproximation, GPUProgram.READ);
 		fastMethodProgram.setArgument(2, originalImage, GPUProgram.READ); // This only needs to be set once, or if there is a new input image
 		fastMethodProgram.setArgument(3, coords1, GPUProgram.READ);
 		fastMethodProgram.setArgument(4, coords2, GPUProgram.READ);
@@ -59,20 +66,23 @@ public class GPUAlgorithms {
 		fastMethodProgram.setArgument(8, coordsOuterCount, GPUProgram.READ);
 		fastMethodProgram.setArgument(9, innerToOuterRatio, GPUProgram.READ);
 		fastMethodProgram.setArgument(10, innerMult, GPUProgram.READ);
-
+		
 		for (int i = 0; i < iterations; i++) {
-			Interface.updateProgress((double)i/iterations);
-
-			fastMethodProgram.executeKernel();
+			UserInterface.updateProgress((double)i/iterations);
+			
+			fastMethodProgram.executeKernelNoCopyback();
 			
 			// The input to the next is the result of the previous
-			newApproximation = linearOutImage;
-			fastMethodProgram.setArgument(1, newApproximation, GPUProgram.READ);
+			if (i != iterations - 1) {
+				GPUProgram.copyGPUMem(mem1, mem2);
+			}
 			
 			if (ImageEffects.isCanceled) {
 				return null;
 			}
 		}
+		
+		fastMethodProgram.copyFromGPU();
 		
 		float[][][] commitImage = null;
 		if (commit) {
@@ -88,8 +98,8 @@ public class GPUAlgorithms {
 			}
 		}
 		
-		Interface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
-		Interface.updateProgress(1);
+		UserInterface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+		UserInterface.updateProgress(1);
 		
 		return commitImage; // If this is null, then Algorithms.bImage contains the data (from the GPU)
 	}
@@ -101,7 +111,7 @@ public class GPUAlgorithms {
 		
 		final long startTime = System.currentTimeMillis();
 		
-		Interface.setProcessName("Deblurring");
+		UserInterface.setProcessName("Deblurring");
 		
 		final int width = image[0].length;
 		final int height = image[0][0].length;
@@ -113,17 +123,13 @@ public class GPUAlgorithms {
 		final int offset = kernelWidth / 2;
 		for (int x = 0; x < kernelWidth; x++) {
 			for (int y = 0; y < kernelWidth; y++) {
-				float dist = (float)Math.hypot(x - offset, y - offset);
-				float intensity = (radius - dist + 0.5f);
-				if (intensity <= 0) {
-					kernel[y * kernelWidth + x] = 0;
-				} else {
+				if (Math.hypot(x - offset, y - offset) < radius + 0.375) {
 					kernel[y * kernelWidth + x] = 1;
 				}
 			}
 		}
 		
-		Interface.lastKernel = null;
+		UserInterface.lastKernel = null;
 		
 		// Create the image that stores the previous image approximation
 		final float[] newImage = new float[width * height * 3];
@@ -142,7 +148,7 @@ public class GPUAlgorithms {
 		// Create and execute the program on the GPU
 		if (rlProgram == null) {
 			String baseDir = "";
-			if (!Interface.isPackagedAsJar) {
+			if (!UserInterface.isPackagedAsJar) {
 				baseDir = "src/deconvolution/";
 			}
 			rlProgram = new GPUProgram("rlIteration", baseDir + "RichardsonLucy.cl");
@@ -169,17 +175,17 @@ public class GPUAlgorithms {
 			
 			// middleBlur = image / blur(oldImage)
 			rlProgram.setArgument(6, 0, GPUProgram.READ); // First RL algorithm mode
-			rlProgram.executeKernel();
+			rlProgram.executeKernelNoCopyback();
 			
 			// newImage = newImage * blur(middleBlur)
 			rlProgram.setArgument(6, 1, GPUProgram.READ); // Second RL algorithm mode
-			rlProgram.executeKernel();
+			rlProgram.executeKernelNoCopyback();
 			
-			Interface.updateProgress((double)i / iterations);
+			UserInterface.updateProgress((double)i / iterations);
 			
 			// Exit early if the effect has been canceled
 			if (ImageEffects.isCanceled) {
-				Interface.cancelProgress();
+				UserInterface.cancelProgress();
 				return null;
 			}
 			
@@ -199,6 +205,8 @@ public class GPUAlgorithms {
 			*/
 		}
 		
+		rlProgram.copyFromGPU();
+		
 		float[][][] commitImage = null;
 		if (commit) {
 			// Convert the 1d image array into a 2d array
@@ -213,7 +221,7 @@ public class GPUAlgorithms {
 			}
 		} else {
 			// Copy the image from the GPU output to the preview BufferedImage
-			final byte[] bufferData = Algorithms.extractByteArray(Interface.previewImage);
+			final byte[] bufferData = Algorithms.extractByteArray(UserInterface.previewImage);
 			for (int x = 0; x < width; x++) {
 				for (int y = 0; y < height; y++) {
 					int i = (y * width + x) * 3;
@@ -224,8 +232,8 @@ public class GPUAlgorithms {
 			}
 		}
 		
-		Interface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
-		Interface.updateProgress(1);
+		UserInterface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+		UserInterface.updateProgress(1);
 		
 		// Deallocate the memory if the preview has ended
 		if (!ImageEffects.isDialogShowing) {
@@ -235,6 +243,54 @@ public class GPUAlgorithms {
 		return commitImage; // If this is null, then Algorithms.bImage contains the data (from the GPU)
 	}
 	
+	// Perform the laplacian sharpen on the GPU
+	static float[][][] sharpenGPU(final byte[] originalImage, int width, int height,
+			final float weight, float radius, boolean commit) {
+		
+		UserInterface.setProcessName("Sharpening");
+		
+		final long startTime = System.currentTimeMillis();
+		
+		// Create and execute the program on the GPU
+		if (sharpenProgram == null) {
+			String baseDir = "";
+			if (!UserInterface.isPackagedAsJar) {
+				baseDir = "src/deconvolution/";
+			}
+			sharpenProgram = new GPUProgram("sharpen", baseDir + "Sharpen.cl");
+			sharpenProgram.setGlobalWorkGroupSizes(width, height);
+			//sharpenProgram.setLocalWorkGroupSizes(64, 16);
+		}
+		
+		// Create the image to write to (as a single dimensional int array)
+		final byte[] linearOutImage = Algorithms.extractByteArray(UserInterface.previewImage);
+
+		sharpenProgram.setArgument(0, linearOutImage, GPUProgram.WRITE);
+		sharpenProgram.setArgument(1, originalImage, GPUProgram.READ);
+		sharpenProgram.setArgument(2, radius, GPUProgram.READ);
+		sharpenProgram.setArgument(3, weight, GPUProgram.READ);
+		sharpenProgram.executeKernel();
+		
+		float[][][] commitImage = null;
+		if (commit) {
+			// Convert the 1d image array into a 2d array
+			commitImage = new float[3][width][height];
+			for (int x = 0; x < width; x++) {
+				for (int y = 0; y < height; y++) {
+					int i = (y * width + x) * 3;
+					commitImage[2][x][y] = linearOutImage[i + 0] & 0xFF;
+					commitImage[1][x][y] = linearOutImage[i + 1] & 0xFF;
+					commitImage[0][x][y] = linearOutImage[i + 2] & 0xFF;
+				}
+			}
+		}
+		
+		final long endTime = System.currentTimeMillis();
+		UserInterface.setProcessName("Sharpening (" + (endTime - startTime) + "ms)");
+		UserInterface.updateProgress(1);
+		
+		return commitImage; // If this is null, then Algorithms.bImage contains the data (from the GPU)
+	}
 	// Reset the memory for all of the GPU programs
 	static void deallocateMemory() {
 		if (fastMethodProgram != null) {
@@ -244,6 +300,10 @@ public class GPUAlgorithms {
 		if (rlProgram != null) {
 			rlProgram.dispose();
 			rlProgram = null;
+		}
+		if (sharpenProgram != null) {
+			sharpenProgram.dispose();
+			sharpenProgram = null;
 		}
 	}
 	

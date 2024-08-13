@@ -54,25 +54,41 @@ public class Deblur1D {
 		// MSE converges by the 1/sqrt(x)
 		// Order of convergence of RMSE is about q=1, with mu=0.999
 		
-		//*
+		//* Generate a step function, blur it, then deblur it.
 		final int radius = 40;
 		float[] arr = generateStep(800);
 		
 		arr = Algorithms.blur1D(arr, radius);
 		arr = Algorithms.deblur1Dv2(arr, radius, 2); //1, 2, 3, 10, 51, 1001
 		
-		//*
+		//* Print out the x,y coordinates of each point.
 		for (int i = 0; i < arr.length; i++) {
 			//print(String.format("%.6f", arr[i]));
 			print(i + "," + String.format("%.6f", arr[i]));
 		}
 		//*/
 		
+		/* Blur a sound file
+		final int radius = 200;
+		float[] samples = readSoundFile("sound/Flourish.wav");
+		samples = Algorithms.blur1D(samples, radius);
+		saveSoundFile(samples, "sound/Flourish.wav", "_BLUR_r200");
+		//*/
+		
+		/* Deblur a sound file
+		final int radius = 1000;
+		float[] samples = readSoundFile("sound/Flourish_BLUR_r1000_orig.wav");
+		samples = Algorithms.deblur1Dv2(samples, radius, 1);
+		//samples = Algorithms.deblur1D(samples, radius);
+		saveSoundFile(samples, "sound/Flourish.wav", "_DEBLUR_r1000_i1");
+		print("Done");
+		//*/
+		
 		/*
 		final int radius = 1000;
-		float[] samples = readSoundFile();
+		float[] samples = readSoundFile("sound/Flourish.wav");
 		samples = Algorithms.blur1D(samples, radius);
-		saveSoundFile(samples, "_BLUR");
+		saveSoundFile(samples, "sound/Flourish.wav", "_BLUR");
 		quantizeTo16Bits(samples);
 		long startTime = System.currentTimeMillis();
 		//float[] samples1 = Algorithms.deblur1Dv2(samples, radius, 4);
@@ -82,19 +98,37 @@ public class Deblur1D {
 		//samples = Algorithms.deblur1D(samples, radius);
 		long endTime = System.currentTimeMillis();
 		print("Done in " + (endTime - startTime) + " ms");
-		saveSoundFile(samples, "_DEBLUR");
+		saveSoundFile(samples, "sound/Flourish.wav", "_DEBLUR");
 		//*/
 		
 		/*  Compute NRMSE for various number of deblur iterations
-		final int radius = 1000;
+		final int radius = 200;
 		float[] samplesOriginal = readSoundFile("sound/Flourish.wav");
-		float[] samplesBlurred = Algorithms.blur1D(samplesOriginal, radius);
+		//float[] samplesBlurred = Algorithms.blur1D(samplesOriginal, radius);
+		float[] samplesBlurred = readSoundFile("sound/Flourish_BLUR_r200.wav");
 		print(computeNRMSE(samplesBlurred, samplesOriginal));
 		//print("Deblur:   " + computeNRMSE(samplesOriginal, samplesDeblurred));
 		for (int i = 1; i < 1000; i++) {
 			float[] samplesDeblurred = Algorithms.deblur1Dv2(samplesBlurred, radius, i);
 			print(computeNRMSE(samplesOriginal, samplesDeblurred));
 		}
+		//*/
+		
+		/* Print out samples of a sound file after multiple iterations of deblurring
+		final int radius = 200;
+		//float[] fullSamples = readSoundFile("sound/Flourish.wav");
+		float[] fullSamples = readSoundFile("sound/Flourish_BLUR_r200.wav");
+		float[] samples = new float[17000];
+		// fullSamples.length/5 - 20000
+		// fullSamples.length/9 - 18000
+		System.arraycopy(fullSamples, fullSamples.length/5 - 27000, samples, 0, samples.length);
+		//samples = Algorithms.blur1D(samples, radius);
+		samples = Algorithms.deblur1Dv2(samples, radius, 10); // 0, 1, 10, 100
+		for (int i = 7000; i < samples.length - 7000; i++) {
+			System.out.printf("%.5f\n", samples[i] + 0.00f);
+		}
+		System.out.println();
+		//saveSoundFile(samples, "sound/Flourish.wav", "_DEBLUR_r1000_i600");
 		//*/
 	}
 	
@@ -185,7 +219,7 @@ public class Deblur1D {
 		try {
 			
 			String outFileName = filePath.substring(0, filePath.lastIndexOf('.')) + suffixToAppend + ".wav";
-			print("Saving as " + outFileName);
+			//print("Saving as " + outFileName);
 			AudioInputStream stream = new AudioInputStream(byteInputStream, outFormat, outputBytes.length);
 			File file = new File(outFileName);
 			AudioSystem.write(stream, Type.WAVE, file);

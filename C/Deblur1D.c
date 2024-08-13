@@ -1,6 +1,7 @@
 // Deblur1D.c
 // This c file runs the Fast-Method deconvolution algorithm in one dimension.
 // gcc Deblur1D.c -o Deblur1D.exe -O && Deblur1D.exe
+// May also use -Ofast
 
 #include <stdio.h>
 #include <stdint.h>

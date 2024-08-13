@@ -11,9 +11,10 @@ import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.util.GLPixelBuffer;
 import com.jogamp.opengl.util.GLReadBufferUtil;
 
-import gpuTesting.ShaderProgram;
+import gpuAbstraction.ShaderProgram;
 
 import java.nio.ByteBuffer;
+import java.nio.ShortBuffer;
 
 import javax.swing.JOptionPane;
 
@@ -27,10 +28,11 @@ public class DeblurOpenGL {
 	private static GL2 gl;
 	private static ShaderProgram shader;
 	private static int textureID;
-    private static int width;
-    private static int height;
-    private static boolean isDeblurEnabled = true;
-    private static float blurRadius;
+	private static int width;
+	private static int height;
+	private static boolean isDeblurEnabled = true;
+	private static float blurRadius;
+	private static float deblurAmount = 1;
 	private static int[] textureIdRef;
 	private static boolean isInitialized = false;
 	private static byte[] nextImageToRender; // Byte array directly from a BufferedImage
@@ -57,11 +59,11 @@ public class DeblurOpenGL {
 		isInitialized = true;
 		
 		GLCapabilities caps = new GLCapabilities(GLProfile.getDefault());
-	    caps.setSampleBuffers(true);
-	    
-	    glCanvas = new GLCanvas(caps);
-	    glCanvas.setEnabled(false); // Prevent capturing mouse events (pass through)
-	    glCanvas.addGLEventListener(new GLEventListener() {
+		caps.setSampleBuffers(true);
+		
+		glCanvas = new GLCanvas(caps);
+		glCanvas.setEnabled(false); // Prevent capturing mouse events (pass through)
+		glCanvas.addGLEventListener(new GLEventListener() {
 			public void display(GLAutoDrawable arg0) {
 				DeblurOpenGL.display(arg0);
 			}
@@ -86,12 +88,14 @@ public class DeblurOpenGL {
 
 	// Set the image parameters for the next image to deblur.
 	// (Only needs to be set once for a sequence of similar images.)
-	public static void setImageParameters(final int width, final int height, final float deblurRadius) {
+	public static void setImageParameters(final int width, final int height, final float deblurRadius, final float deblurAmount) {
 		
 		// Set the algorithm parameters
 		DeblurOpenGL.width = width;
 		DeblurOpenGL.height = height;
 		DeblurOpenGL.blurRadius = deblurRadius;
+		
+		DeblurOpenGL.deblurAmount = deblurAmount;
 		
 		// Update the shader values next time it renders
 		needToUpdateShaderParameters = true;
@@ -120,13 +124,23 @@ public class DeblurOpenGL {
 		
 		gl.glPixelStorei(GL2.GL_UNPACK_ALIGNMENT, 1);
 		
-		// Send width and height to the shader
+		// Send width, height, and deblur amount to the shader
 		
 		int widthLoc = gl.glGetUniformLocation(shader.getId(), "width"); // Access the "uniform int width" from the shader
 		gl.glUniform1i(widthLoc, width);
 		
 		int heightLoc = gl.glGetUniformLocation(shader.getId(), "height"); // Access the "uniform int height" from the shader
 		gl.glUniform1i(heightLoc, height);
+		
+		int amountLoc = gl.glGetUniformLocation(shader.getId(), "deblurAmount"); // Access the "uniform float deblurAmount" from the shader
+
+		gl.glUniform1f(amountLoc, deblurAmount);
+		
+		// Send the radius to the shader (This is not needed for Fast-Method, but is useful for debugging)
+		
+		int radiusLoc = gl.glGetUniformLocation(shader.getId(), "radius"); // Access the "uniform float radius" from the shader
+		
+		gl.glUniform1f(radiusLoc, blurRadius);
 		
 		// Generate the blur kernel with the given radius
 		
@@ -137,27 +151,21 @@ public class DeblurOpenGL {
 		final int coords2Count = coords2.length/2;
 		final int coordsOuterCount = coordsOuter.length/2;
 		
-		// Convert to byte arrays so they can be stored in texture data
+		// Convert to int16 arrays so they can be stored in texture data
 		
-		final byte[] coords1Byte = new byte[coords1.length];
+		final short[] coords1Byte = new short[coords1.length];
 		for (int i = 0; i < coords1.length; i++) {
-			coords1Byte[i] = (byte)coords1[i];
+			coords1Byte[i] = (short)coords1[i];
 		}
-		final byte[] coords2Byte = new byte[coords2.length];
+		final short[] coords2Byte = new short[coords2.length];
 		for (int i = 0; i < coords2.length; i++) {
-			coords2Byte[i] = (byte)coords2[i];
+			coords2Byte[i] = (short)coords2[i];
 		}
-		final byte[] coordsOuterByte = new byte[coordsOuter.length];
-		boolean printedError = false;
+		final short[] coordsOuterByte = new short[coordsOuter.length];
 		for (int i = 0; i < coordsOuter.length; i++) {
-			// Check for byte out of range
-			if (!printedError && (coordsOuter[i] < -128 || coordsOuter[i] > 127)) {
-				printedError = true;
-				System.err.println("Deblur radius is too large for OpenGL implementation");
-			}
-			coordsOuterByte[i] = (byte)coordsOuter[i];
+			coordsOuterByte[i] = (short)coordsOuter[i];
 		}
-		
+
 		// Bind the length values to the shader
 		
 		int coords1CountLoc = gl.glGetUniformLocation(shader.getId(), "coords1Count"); // Access the "uniform int coords1Count" from the shader
@@ -177,7 +185,7 @@ public class DeblurOpenGL {
 		gl.glBindTexture(GL2.GL_TEXTURE_2D, textureIdRef[1]);
 		gl.glTexParameteri(GL2.GL_TEXTURE_2D, GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_NEAREST);
 		gl.glTexParameteri(GL2.GL_TEXTURE_2D, GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_NEAREST);
-		gl.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL2.GL_R8_SNORM, coords1.length, 1, 0, GL2.GL_RED, GL2.GL_BYTE, ByteBuffer.wrap(coords1Byte));
+		gl.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL2.GL_R16_SNORM, coords1.length, 1, 0, GL2.GL_RED, GL2.GL_SHORT, ShortBuffer.wrap(coords1Byte));
 		
 		int coords2Loc = gl.glGetUniformLocation(shader.getId(), "coords2"); // Access the "uniform sampler2D coords2" from the shader
 		gl.glUniform1i(coords2Loc, 2);
@@ -185,7 +193,7 @@ public class DeblurOpenGL {
 		gl.glBindTexture(GL2.GL_TEXTURE_2D, textureIdRef[2]);
 		gl.glTexParameteri(GL2.GL_TEXTURE_2D, GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_NEAREST);
 		gl.glTexParameteri(GL2.GL_TEXTURE_2D, GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_NEAREST);
-		gl.glTexImage2D(GL2.GL_TEXTURE_2D, 0, GL2.GL_R8_SNORM, coords2.length, 1, 0, GL2.GL_RED, GL2.GL_BYTE, ByteBuffer.wrap(coords2Byte));
+		gl.glTexImage2D(GL2.GL_TEXTURE_2D, 0, GL2.GL_R16_SNORM, coords2.length, 1, 0, GL2.GL_RED, GL2.GL_SHORT, ShortBuffer.wrap(coords2Byte));
 		
 		int coordsOuterLoc = gl.glGetUniformLocation(shader.getId(), "coordsOuter"); // Access the "uniform sampler2D coordsOuter" from the shader
 		gl.glUniform1i(coordsOuterLoc, 3);
@@ -193,7 +201,7 @@ public class DeblurOpenGL {
 		gl.glBindTexture(GL2.GL_TEXTURE_2D, textureIdRef[3]);
 		gl.glTexParameteri(GL2.GL_TEXTURE_2D, GL2.GL_TEXTURE_MIN_FILTER, GL2.GL_NEAREST);
 		gl.glTexParameteri(GL2.GL_TEXTURE_2D, GL2.GL_TEXTURE_MAG_FILTER, GL2.GL_NEAREST);
-		gl.glTexImage2D(GL2.GL_TEXTURE_2D, 0, GL2.GL_R8_SNORM, coordsOuter.length, 1, 0, GL2.GL_RED, GL2.GL_BYTE, ByteBuffer.wrap(coordsOuterByte));
+		gl.glTexImage2D(GL2.GL_TEXTURE_2D, 0, GL2.GL_R16_SNORM, coordsOuter.length, 1, 0, GL2.GL_RED, GL2.GL_SHORT, ShortBuffer.wrap(coordsOuterByte));
 		
 		
 		// Bind whether to bypass all deblurring
@@ -246,7 +254,7 @@ public class DeblurOpenGL {
 		} catch (Exception e) {
 			e.printStackTrace();
 			
-			JOptionPane.showMessageDialog(Interface.frame,
+			JOptionPane.showMessageDialog(UserInterface.frame,
 					e.getMessage(),
 					"OpenGL Error",
 					JOptionPane.ERROR_MESSAGE);
@@ -258,25 +266,25 @@ public class DeblurOpenGL {
 	public static byte[] readBytesFromCanvas() {
 		
 		// Make the GLCanvas the current OpenGL context
-        GLContext glContext = DeblurOpenGL.glCanvas.getContext();
-        glContext.makeCurrent();
-        
-        // Create GLReadBufferUtil instance
-        GLReadBufferUtil glReadBufferUtil = new GLReadBufferUtil(false, false);
-        
-        // Read the pixels from the GLCanvas into a ByteBuffer
-        glReadBufferUtil.readPixels(DeblurOpenGL.glCanvas.getGL(), true);
+		GLContext glContext = DeblurOpenGL.glCanvas.getContext();
+		glContext.makeCurrent();
+		
+		// Create GLReadBufferUtil instance
+		GLReadBufferUtil glReadBufferUtil = new GLReadBufferUtil(false, false);
+		
+		// Read the pixels from the GLCanvas into a ByteBuffer
+		glReadBufferUtil.readPixels(DeblurOpenGL.glCanvas.getGL(), true);
 
-        GLPixelBuffer pixelsBuffer = glReadBufferUtil.getPixelBuffer();
-        
-        ByteBuffer buf = (ByteBuffer) pixelsBuffer.buffer;
-        buf.rewind();
-        final byte[] bytes = new byte[buf.remaining()];
-        buf.get(bytes);
-        
-        glContext.release();
-        
-        return bytes;
+		GLPixelBuffer pixelsBuffer = glReadBufferUtil.getPixelBuffer();
+		
+		ByteBuffer buf = (ByteBuffer) pixelsBuffer.buffer;
+		buf.rewind();
+		final byte[] bytes = new byte[buf.remaining()];
+		buf.get(bytes);
+		
+		glContext.release();
+		
+		return bytes;
 	}
 	
 	// Called automatically when the glCanvas is first created and used
@@ -286,7 +294,7 @@ public class DeblurOpenGL {
 		shader = new ShaderProgram(gl);
 		try {
 			String baseDir = "";
-			if (!Interface.isPackagedAsJar) {
+			if (!UserInterface.isPackagedAsJar) {
 				baseDir = "src/deconvolution/";
 			}
 			shader.compileShader(gl, baseDir + "vshader.glsl", GL2.GL_VERTEX_SHADER);

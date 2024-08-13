@@ -8,7 +8,7 @@ import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
 
-import gpuTesting.GPUProgram;
+import gpuAbstraction.GPUProgram;
 
 // This class decodes and processes videos frame by frame
 
@@ -18,7 +18,10 @@ public class VideoDecoder {
 	public static boolean isVideoRunning = false;
 	
 	// Blur radius for the video (constant from start to end)
-	static private float blurRadius = 20;
+	static private float blurRadius = 37;
+	
+	// Intensity of the deblurring (best is 1)
+	static private float deblurAmount = 1.0f;
 	
 	// Number of iterations to run the deblurring algorithm (not used for OpenGL version)
 	static private final int deblurIterations = 1;
@@ -36,7 +39,7 @@ public class VideoDecoder {
 	// Main method for video decoding
 	public static void main(String[] args) {
 		
-		Interface.setupFrame();
+		UserInterface.setupFrame();
 		
 		/*
 		for (int i = 0; i < 10; i++) {
@@ -68,7 +71,7 @@ public class VideoDecoder {
 	static void decodeVideoBytedeco() {
 		isVideoRunning = true;
 		
-		if (Interface.frame == null) {
+		if (UserInterface.frame == null) {
 			print("Frame must be setup before processing video");
 			System.exit(1);
 		}
@@ -96,12 +99,12 @@ public class VideoDecoder {
 			}
 			
 			// Update on-screen statistics
-			Interface.imageInfoLabel.setText(width + "x" + height + " px, " +
+			UserInterface.imageInfoLabel.setText(width + "x" + height + " px, " +
 					numFrames + " frames, " + String.format("%.2f", grabber.getFrameRate()) + " fps");
 			
 			// If we are using OpenGL, then initialize the shader with the video frame parameters
 			if (Algorithms.useOpenGL) {
-				DeblurOpenGL.setImageParameters(width, height, blurRadius);
+				DeblurOpenGL.setImageParameters(width, height, blurRadius, deblurAmount);
 			}
 			
 			final long startTime = System.currentTimeMillis();
@@ -109,9 +112,7 @@ public class VideoDecoder {
 			BufferedImage[] nextGrabbedImage = new BufferedImage[1]; // Java pointer hack
 			
 			// Get the first frame
-			do {
-				previousVideoFrame = new Java2DFrameConverter().convert(grabber.grab());
-			} while (previousVideoFrame == null);
+			previousVideoFrame = new Java2DFrameConverter().convert(grabber.grabImage());
 			
 			// Iterate through each frame in the video
 			int frameNum = 0;
@@ -124,27 +125,19 @@ public class VideoDecoder {
 						Java2DFrameConverter converter = new Java2DFrameConverter();
 						
 						Frame frame;
-						do {
-							try {
-								frame = grabber.grab();
-								if (frame == null) {
-									break;
-								}
-							} catch (Exception e) {
-								e.printStackTrace();
-								System.exit(1);
-								break;
+						try {
+							frame = grabber.grabImage();
+							if (frame == null) {
+								return;
 							}
-							
-							// Ignore audio frames
-							if (frame.image != null) {
-
-								// Returns type TYPE_3BYTE_BGR
-								nextGrabbedImage[0] = converter.convert(frame);
-								break;
-							}
-						} while (true); // Keep going until we have an image frame
+						} catch (Exception e) {
+							e.printStackTrace();
+							System.exit(1);
+							return;
+						}
 						
+						// Returns type TYPE_3BYTE_BGR
+						nextGrabbedImage[0] = converter.convert(frame);
 					}
 				});
 				
@@ -169,16 +162,16 @@ public class VideoDecoder {
 				} else if (Algorithms.useOpenCL) { // Deblur using the GPU (OpenCL)
 					
 					GPUProgram.initializeGPU(); // Initialization only runs once
-					Interface.previewImage = previousVideoFrame;
+					UserInterface.previewImage = previousVideoFrame;
 					
 					long gpuStart = System.nanoTime();
 					
-					GPUAlgorithms.fastMethodGPU(buffer, deblurIterations, width, height, 1.0f, blurRadius, false);
+					GPUAlgorithms.fastMethodGPU(buffer, deblurIterations, width, height, deblurAmount, blurRadius, false);
 					
 					criticalCodeTime = (System.nanoTime() - gpuStart) / 1000000.0;
 					
 					// Update the GUI visual
-					Interface.redrawPreviewImage();
+					UserInterface.redrawPreviewImage();
 					
 					// Save the video if desired
 					if (saveVideo) {
@@ -204,12 +197,12 @@ public class VideoDecoder {
 					}
 					
 					floatImage = Algorithms.fastMethodSwitch(floatImage, 1.0f, blurRadius, deblurIterations, false);
-					Interface.previewImage = Algorithms.arrayToImage(floatImage);
+					UserInterface.previewImage = Algorithms.arrayToImage(floatImage);
 
 					criticalCodeTime = (System.nanoTime() - cpuStart) / 1000000.0;
 					
 					// Update the GUI visual
-					Interface.redrawPreviewImage();
+					UserInterface.redrawPreviewImage();
 				}
 				
 				print("Frame " + frameNum + " " + criticalCodeTime + " ms");

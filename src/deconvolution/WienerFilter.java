@@ -1,12 +1,6 @@
 package deconvolution;
 
-import java.awt.Graphics;
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-
-import javax.swing.ImageIcon;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
 
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -15,7 +9,6 @@ import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
-import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
 /*
@@ -32,78 +25,6 @@ public class WienerFilter {
 	
 	private static boolean loadedOpenCVLibrary = false;
 	
-	public static void main(String[] args) {
-		
-		// Load the native OpenCV library
-		if (!loadedOpenCVLibrary) {
-			System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
-			loadedOpenCVLibrary = true;
-		}
-		
-		Mat imgIn1 = loadImageFromFile("src/deconvolution/Results/JWST 1080 20.png");
-		Mat imgIn2 = loadImageFromFile("src/deconvolution/Results/JWST 1080 20.png");
-		//Mat imgIn1 = loadImageFromFile("src/deconvolution/Image Radius 12.png");
-		//Mat imgIn2 = loadImageFromFile("src/deconvolution/Image Radius 12.png");
-		final float[][][] blurred = Algorithms.scaleImage(matToFloatArr(imgIn1), 256);
-		final float[][][] original = Algorithms.scaleImage(matToFloatArr(imgIn2), 256);
-		
-		int snr = 3000; // Signal-to-noise ratio
-		int blurRadius = 20; // Radius of disk blur
-		
-		// Approximate amount by which to extend the border to eliminate unwanted edge-effects.
-		final int borderExpansion = (int)(Math.sqrt(snr) * blurRadius * 1.1 + 5);
-
-		final int[] addedMargins = computePaddingForDFT(imgIn1, borderExpansion);
-		final int newWidth =  imgIn1.width() + addedMargins[2] + addedMargins[3];
-		final int newHeight = imgIn1.height() + addedMargins[0] + addedMargins[1];
-		
-		// Compute the point-spread-function and Wiener filter ahead of time.
-		Mat psf = calcPSF(new Size(newWidth, newHeight), blurRadius);
-		Mat wienerFilter = calcWnrFilter(psf, 1.0 / snr);
-
-		//* Code warm up:
-		padForDFT(imgIn2, addedMargins);
-		Mat imgOut2 = wienerDeconvolve(imgIn2, wienerFilter);
-		imgOut2 = cropImage(imgOut2, addedMargins);
-		//*/
-		
-		long startTime = System.currentTimeMillis();
-		
-		// Extend the borders of the image
-		padForDFT(imgIn1, addedMargins);
-		
-		// Perform deconvolution
-		Mat imgOut1 = wienerDeconvolve(imgIn1, wienerFilter);
-		
-		// Crop the images back to the original size
-		imgOut1 = cropImage(imgOut1, addedMargins);
-		
-		long endTime = System.currentTimeMillis();
-		print(endTime - startTime + " ms");
-		
-		/* Print out a slice of the matrix
-		float[][][] arr = matToFloatArr(imgIn1);
-		for (int i = 0; i < arr[0].length; i++) {
-			print(arr[0][i][arr[0][0].length/2]);
-		}
-		//*/
-
-		//* Compute the NRMSE
-		final float[][][] deblurred = Algorithms.scaleImage(matToFloatArr(imgOut1), 256);
-		double nrmseBlur = Algorithms.normalizedRootMeanSquareError(original, blurred);
-		double nrmseDeblur = Algorithms.normalizedRootMeanSquareError(original, deblurred);
-		print("Blurred: " + nrmseBlur);
-		print("Deblur:  " + nrmseDeblur);
-		//*/
-		
-		// Display the images
-		//Core.normalize(imgOut, imgOut, 0, 255,  Core.NORM_MINMAX);
-		Core.multiply(imgOut1, Scalar.all(256), imgOut1);
-		displayMatrix(imgOut1);
-		Core.multiply(imgOut2, Scalar.all(256), imgOut2);
-		displayMatrix(imgOut2);
-	}
-	
 	// Compute and return the ideal padding size for this image.
 	// Take into account the DFT size and the padding needed to reduce edge effects in the Wiener deconvolution.
 	// Return the added [top, bottom, left, right] margin.
@@ -114,8 +35,11 @@ public class WienerFilter {
 		final int minCols = inputImg.cols() + minBorder;
 		
 		// Compute optimal size for DFT
-		final int m = Core.getOptimalDFTSize(minRows) - inputImg.rows();
-		final int n = Core.getOptimalDFTSize(minCols) - inputImg.cols();
+		final int optimalRows = (Core.getOptimalDFTSize(minRows) + 1)/2*2;
+		final int optimalCols = (Core.getOptimalDFTSize(minCols) + 1)/2*2;
+		final int m = optimalRows - inputImg.rows();
+		final int n = optimalCols - inputImg.cols();
+		
 		final int top = m / 2;
 		final int bottom = m - top;
 		final int left = n / 2;
@@ -134,43 +58,6 @@ public class WienerFilter {
 	// Crop the given image by the given amount
 	private static Mat cropImage(Mat inputImg, final int[] margins) {
 		return inputImg.submat(margins[0], inputImg.rows() - margins[1], margins[2], inputImg.cols() - margins[3]);
-	}
-	
-	// Read a Mat from the given file path.
-	// Matrix is returned in float32 format, normalized to [0,1).
-	private static Mat loadImageFromFile(final String fileName) {
-		Mat imgIn = Imgcodecs.imread(fileName);
-		
-		if (imgIn.empty()) {
-			System.err.println("Could not read image!");
-			System.exit(1);
-		}
-		
-		// Make sure the image has even width and height
-		if (imgIn.cols() % 2 != 0 || imgIn.rows() % 2 != 0) {
-			System.err.println("Image must have even rows and columns");
-			System.exit(2);
-		}
-		
-		// Convert to float32 grayscale
-		imgIn.convertTo(imgIn, CvType.CV_32F, 1.0/256, 0.0); // outMat, type, scale, shift
-		//Imgproc.cvtColor(imgIn, imgIn, Imgproc.COLOR_BGR2GRAY);
-		
-		return imgIn;
-	}
-	
-	// Scale the given buffered image
-	private static BufferedImage rescaleImage(final BufferedImage inImage, final double scale) {
-		final BufferedImage newImage = new BufferedImage(
-				(int)(inImage.getWidth() * scale),
-				(int)(inImage.getHeight() * scale),
-				BufferedImage.TYPE_3BYTE_BGR);
-		
-		final Graphics g = newImage.createGraphics();
-		g.drawImage(inImage, 0, 0, newImage.getWidth(), newImage.getHeight(), null);
-		g.dispose();
-		
-		return newImage;
 	}
 	
 	// Convert a matrix to a float array. [rgb][row][column]
@@ -197,61 +84,6 @@ public class WienerFilter {
 		Mat newMat = new Mat();
 		Core.divide(m, sum, newMat);
 		return newMat;
-	}
-	
-	// Show the given matrix in a JFrame
-	private static void displayMatrix(Mat m) {
-		BufferedImage image = matToBufferedImage(m);
-		displayImage(image);
-	}
-	
-	// Show the given buffered image in a JFrame
-	private static void displayImage(BufferedImage img) {
-		JFrame frame = new JFrame("Image");
-		frame.setResizable(false);
-		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		
-		// Scale down if too large
-		if (img.getHeight() > 1020) {
-			img = rescaleImage(img, 1010.0 / img.getHeight());
-		}
-		
-		JLabel label = new JLabel(new ImageIcon(img));
-		frame.add(label);
-		
-		frame.pack();
-		frame.setLocationRelativeTo(null);
-		frame.setVisible(true);
-	}
-	
-	// Convert the given matrix to a buffered image.
-	// The matrix may be grayscale or color, in any data type.
-	private static BufferedImage matToBufferedImage(Mat m) {
-		
-		// Determine RGB or grayscale
-		int bufferedImageType = 0;
-		if (m.channels() == 1) {
-			bufferedImageType = BufferedImage.TYPE_BYTE_GRAY;
-		} else if (m.channels() == 3) {
-			bufferedImageType = BufferedImage.TYPE_3BYTE_BGR;
-		} else {
-			System.err.println("Unsupported mat for matToBufferedImage: channels = " + m.channels());
-			System.exit(1);
-		}
-		
-		// Convert the image to byte format for the buffered image
-		Mat tmp = new Mat();
-		m.convertTo(tmp, CvType.CV_8UC3, 1.0, 0.0); // Destination, Type, Scale, Gain
-		m = tmp;
-		
-		// Create an empty image in matching format
-		BufferedImage newImage = new BufferedImage(m.width(), m.height(), bufferedImageType);
-
-		// Get the BufferedImage's backing array and copy the pixels directly into it
-		final byte[] data = Algorithms.extractByteArray(newImage);
-		m.get(0, 0, data);
-		
-		return newImage;
 	}
 	
 	// Convert a float[rgb][x][y] array into an OpenCV Mat
@@ -281,7 +113,7 @@ public class WienerFilter {
 	// This is called in ImageEffects.java.
 	public static float[][][] wienerDeconvolvePublic(final float[][][] image, int blurRadius, int snr) {
 
-		Interface.setProcessName("Deblurring");
+		UserInterface.setProcessName("Deblurring");
 		
 		// Load the native OpenCV library
 		if (!loadedOpenCVLibrary) {
@@ -333,8 +165,8 @@ public class WienerFilter {
 		// Crop the images back to the original size
 		imgOut1 = cropImage(imgOut1, addedMargins);
 		
-		Interface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
-		Interface.updateProgress(1);
+		UserInterface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+		UserInterface.updateProgress(1);
 		
 		// Exit early if the effect has been canceled
 		if (ImageEffects.isCanceled) {
@@ -525,9 +357,5 @@ public class WienerFilter {
 		Core.merge(complexOutputPlanes, output_G);
 		
 		return output_G;
-	}
-	
-	private static void print(Object o) {
-		System.out.println(o);
 	}
 }

@@ -11,17 +11,20 @@ uniform sampler2D coordsOuter;	// Used as a 1-dimensional array
 uniform int coords1Count;
 uniform int coords2Count;
 uniform int coordsOuterCount;
+uniform float radius;           // Not needed for Fast-Method, but used for debugging
+uniform float deblurAmount;
 uniform bool enableDeblur;		// Boolean
 uniform int width;
 uniform int height;
 
 const float innerMult = 1.0 / 2.0 * 0.67f;
 
-// Read from the given index of a sampler2D, interpreting it as a 1-dimensional byte buffer,
+// Read from the given index of a sampler2D, interpreting it as a 1-dimensional int16 buffer,
 // where indexes are in pairs.
+// The buffer is assumed to actually be twice as long as bufferLength.
 int readFromArray(sampler2D buffer, int bufferLength, int i) {
 	float x = (float(i) + 0.5) / float(bufferLength * 2);
-	return int(texture2D(buffer, vec2(x, 0)).r * 127);
+	return int(texture2D(buffer, vec2(x, 0)).r * 32767);
 }
 
 void main() {
@@ -37,6 +40,9 @@ void main() {
 	
 	float pixelSizeX = 1.0 / float(width);
 	float pixelSizeY = 1.0 / float(height);
+	
+	
+///////////////////////////// FAST-METHOD DECONVOLUTION /////////////////////////////////
 	
 	float x2 = 0.0;
 	float y2 = 0.0;
@@ -82,7 +88,36 @@ void main() {
 		outerCol += texture2D(tex, vec2(x2, y2));
 	}
 	
-	gl_FragColor = innerMult * gradient + outerCol / float(coordsOuterCount);
+	gl_FragColor = deblurAmount * innerMult * gradient + outerCol / float(coordsOuterCount);
+	//*/
+	
+///////////////////////////// UNSHARP MASKING /////////////////////////////////
+	
+	/*
+	int radiusMax = int(floor(radius));
+	int count = 0;
+	vec4 sum = vec4(0.0, 0.0, 0.0, 0.0);
+	
+	for (int i = -radiusMax; i <= radiusMax; i++) {
+		for (int j = -radiusMax; j <= radiusMax; j++) {
+			float xIndex = x / pixelSizeX + i;
+			float yIndex = y / pixelSizeY + j;
+			if (xIndex >= 0 && xIndex < width && yIndex >= 0 && yIndex < height) {
+				if (i * i + j * j <= (radius + 0.375) * (radius + 0.375)) {
+					sum += texture2D(tex, vec2(xIndex * pixelSizeX, yIndex * pixelSizeY));
+					count++;
+				}
+			}
+		}
+	}
+	
+	sum = texture2D(tex, vec2(x, y)) - sum / count;
+	
+	gl_FragColor = texture2D(tex, vec2(x, y)) + sum * deblurAmount;
+	//*/
+	
+///////////////////////////// DEBUG CODE /////////////////////////////////
+	
 	
 	//vec4 m = texture2D(tex, vec2(0.99999, 0.99999));
 	//gl_FragColor = m;
@@ -114,4 +149,19 @@ void main() {
 	//col += texture2D(tex, vec2(x, y));
 	
 	//gl_FragColor = col;
+	
+	/*
+	float val = 0.2;
+	
+	int i = int(x * 10);
+	int newVal = readFromShortArray(coords1, 10, i);
+	
+	float colorY = (newVal + 5) / 10.0;
+	if (y > colorY) {
+		val = 0.5;
+	}
+	
+	vec4 col = vec4(val, val, val, 0.0);
+	gl_FragColor = col;
+	*/
 }

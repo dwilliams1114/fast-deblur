@@ -3,7 +3,7 @@ package deconvolution;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 
-import gpuTesting.GPUProgram;
+import gpuAbstraction.GPUProgram;
 
 // This class contains CPU-based image processing algorithms
 
@@ -16,7 +16,7 @@ public class Algorithms {
 	static byte[] cachedByteBuffer;
 	
 	// Number of threads to use in calculations or rendering
-	static int numThreads = 1;
+	static int numThreads = 20;
 	
 	// Used to keep track of multithreaded algorithms
 	static int threadsCompleted = 0;
@@ -34,7 +34,7 @@ public class Algorithms {
 	static float[][][] adjust(final float[][][] image,
 			final float contrast, final float brightness, final float saturation, final float exposure) {
 		
-		Interface.setProcessName("Adjusting contrast");
+		UserInterface.setProcessName("Adjusting contrast");
 		
 		final int width = image[0].length;
 		final int height = image[0][0].length;
@@ -68,7 +68,7 @@ public class Algorithms {
 							}
 						}
 						if (threadOffset == 0) {
-							Interface.updateProgress((double)x/width);
+							UserInterface.updateProgress((double)x/width);
 						}
 						
 						// Exit early if the effect has been canceled
@@ -91,7 +91,7 @@ public class Algorithms {
 			} catch (Exception e) {}
 		}
 		
-		Interface.updateProgress(1);
+		UserInterface.updateProgress(1);
 		
 		// Exit early if the effect has been canceled
 		if (ImageEffects.isCanceled) {
@@ -127,11 +127,11 @@ public class Algorithms {
 			DeblurOpenGL.setDeblurEnabled(true);
 			
 			// Set the image parameters
-			DeblurOpenGL.setImageParameters(width, height, radius);
+			DeblurOpenGL.setImageParameters(width, height, radius, amountOffset);
 			
 			if (cachedByteBuffer == null) {
 				// Deconvolve and display using OpenGL
-				cachedByteBuffer = extractByteArray(Interface.previewImage);
+				cachedByteBuffer = extractByteArray(UserInterface.previewImage);
 				
 				// Copy from the float image to the preview image
 				for (int x = 0; x < width; x++) {
@@ -149,7 +149,7 @@ public class Algorithms {
 			
 			// Cannot save if using OpenGL for rendering
 			if (commit) {
-				Interface.displayOpenGLSaveWarning();
+				UserInterface.displayOpenGLSaveWarning();
 			}
 			
 			// The image is drawn directly to the screen, so we don't need to return it
@@ -165,8 +165,8 @@ public class Algorithms {
 				GPUProgram.initializeGPU();
 				
 				// Convert the preview image to 3BYTE_BGR format
-				Interface.previewImage = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
-				byte[] buffer = extractByteArray(Interface.previewImage);
+				UserInterface.previewImage = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
+				byte[] buffer = extractByteArray(UserInterface.previewImage);
 				
 				// Copy from the float image to the preview image
 				for (int x = 0; x < width; x++) {
@@ -178,7 +178,6 @@ public class Algorithms {
 					}
 				}
 				
-				// TODO why aren't we writing directly to "cachedByteBuffer" above?
 				// Make a copy of the image
 				cachedByteBuffer = new byte[buffer.length];
 				System.arraycopy(buffer, 0, cachedByteBuffer, 0, buffer.length);
@@ -189,18 +188,17 @@ public class Algorithms {
 			
 		} else { // Render pixels using CPU
 			
-			Interface.setProcessName("Deblurring");
+			UserInterface.setProcessName("Deblurring");
 			final long startTime = System.currentTimeMillis();
 			
 			// This contains the most accurate image on each iteration
 			float[][][] newApproximation = image;
 			for (int i = 0; i < iterations; i++) {
-				newApproximation = fastMethod(image, newApproximation,
-						amountOffset, radius);
+				newApproximation = fastMethod(image, newApproximation, amountOffset, radius);
 			}
 			
-			Interface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
-			Interface.updateProgress(1);
+			UserInterface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+			UserInterface.updateProgress(1);
 			
 			return newApproximation;
 		}
@@ -222,7 +220,13 @@ public class Algorithms {
 		// Generate the blur kernel
 		final int[] coords1 = generateCircle(radius);
 		final int[] coords2 = generateCircle(radius + 1);
-		final int[] coordsOuter = generateCircleQuarterDensity(radius * 2); // Skip 75% of pixels for speed.
+		final int[] coordsOuter;
+		if (radius <= 3) {
+			coordsOuter = generateCircle(radius * 2 + 0.5f);
+		} else {
+			// Skip 75% of pixels for speed on larger blur radiuses.
+			coordsOuter = generateCircleQuarterDensity(radius * 2 + 0.5f);
+		}
 		final int coords1Count = coords1.length/2;
 		final int coords2Count = coords2.length/2;
 		final int coordsOuterCount = coordsOuter.length/2;
@@ -324,7 +328,7 @@ public class Algorithms {
 						
 						// Update the progress
 						if ((threadOffset == 0) && (x % 32 == 0)) {
-							Interface.updateProgress((double)x/width);
+							UserInterface.updateProgress((double)x/width);
 						}
 
 						// Exit early if the effect has been canceled
@@ -350,7 +354,7 @@ public class Algorithms {
 			e.printStackTrace();
 		}
 		
-		Interface.updateProgress(1);
+		UserInterface.updateProgress(1);
 		
 		// Exit early if the effect has been canceled
 		if (ImageEffects.isCanceled) {
@@ -374,7 +378,7 @@ public class Algorithms {
 	// Deblur using Richardson-Lucy algorithm
 	static float[][][] richardsonLucy(final float[][][] image, float radius, final int iterations) {
 		
-		Interface.setProcessName("Deblurring");
+		UserInterface.setProcessName("Deblurring");
 		
 		final long startTime = System.currentTimeMillis();
 		
@@ -387,18 +391,14 @@ public class Algorithms {
 		final int offset = kernel.length / 2;
 		for (int x = 0; x < kernel.length; x++) {
 			for (int y = 0; y < kernel[0].length; y++) {
-				float dist = (float)Math.hypot(x - offset, y - offset);
-				float intensity = (radius - dist + 0.5f);
-				if (intensity <= 0) {
-					kernel[x][y] = 0;
-				} else {
+				if (Math.hypot(x - offset, y - offset) < radius + 0.375) {
 					kernel[x][y] = 1;
 				}
 			}
 		}
 		
 		// Save this for a preview
-		Interface.lastKernel = kernel;
+		UserInterface.lastKernel = kernel;
 		
 		// Create the image that stores the previous image approximation
 		//final float[][][] firstApproximation = Algorithms.fastMethod(Algorithms.copyImage(image), Algorithms.copyImage(image), 1, radius);
@@ -547,7 +547,7 @@ public class Algorithms {
 				} catch (Exception e) {}
 			}
 			
-			Interface.updateProgress((double)i / iterations);
+			UserInterface.updateProgress((double)i / iterations);
 			
 			// Exit early if the effect has been canceled
 			if (ImageEffects.isCanceled) {
@@ -555,8 +555,8 @@ public class Algorithms {
 			}
 		}
 		
-		Interface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
-		Interface.updateProgress(1);
+		UserInterface.setProcessName("Deblurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+		UserInterface.updateProgress(1);
 		
 		return newImage;
 	}
@@ -666,36 +666,67 @@ public class Algorithms {
 		return outputSamples;
 	}
 	
-	// Deblur the image using the inverse blur kernel (also known as 'sharpen' effect).
+	static float[][][] sharpenSwitch(final float[][][] originalImage, final float weight,
+									final float radius, final boolean commit) {
+		
+		if (useOpenCL) {
+			int width = originalImage[0].length;
+			int height = originalImage[0][0].length;
+			
+			// Only convert the image if it hasn't already been done
+			if (!GPUProgram.isInitialized() || cachedByteBuffer == null) {
+				GPUProgram.initializeGPU();
+				
+				// Convert the preview image to 3BYTE_BGR format
+				UserInterface.previewImage = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
+				byte[] buffer = extractByteArray(UserInterface.previewImage);
+				
+				// Copy from the float image to the preview image
+				for (int x = 0; x < width; x++) {
+					for (int y = 0; y < height; y++) {
+						int i = (y * width + x) * 3;
+						buffer[i + 0] = (byte)clamp(originalImage[2][x][y]);
+						buffer[i + 1] = (byte)clamp(originalImage[1][x][y]);
+						buffer[i + 2] = (byte)clamp(originalImage[0][x][y]);
+					}
+				}
+				
+				// Make a copy of the image
+				cachedByteBuffer = new byte[buffer.length];
+				System.arraycopy(buffer, 0, cachedByteBuffer, 0, buffer.length);
+			}
+			
+			return GPUAlgorithms.sharpenGPU(cachedByteBuffer, width, height, weight, radius, commit);
+		} else {
+			return sharpen(originalImage, weight, radius);
+		}
+	}
+	
+	// Perform unsharp masking (also known as 'sharpen' effect).
 	// Radius is a minimum of 0.5.
-	// The blur algorithm only removes bokeh blurs
-	static float[][][] sharpen(final float[][][] image, float weight, final float radius) {
-		Interface.setProcessName("Sharpening");
+	static float[][][] sharpen(final float[][][] originalImage, final float weight, final float radius) {
+		UserInterface.setProcessName("Sharpening");
+		final long startTime = System.currentTimeMillis();
 		
-		final int width = image[0].length;
-		final int height = image[0][0].length;
+		final int width = originalImage[0].length;
+		final int height = originalImage[0][0].length;
 		
-		final float newWeight = weight / radius / radius;
+		final int radiusMax = (int)Math.floor(radius);
 		
 		// This must have an odd width and height
-		final float[][] kernel = new float[(int)(radius + 0.4) * 2 + 1][(int)(radius + 0.4) * 2 + 1];
-		final int offset = kernel.length / 2;
-		for (int x = 0; x < kernel.length; x++) {
-			for (int y = 0; y < kernel[0].length; y++) {
-				float dist = (float)Math.hypot(x - offset, y - offset);
-				float intensity = (radius - dist + 0.5f) * 1.6f;
-				if (intensity < 0) {
-					intensity = 0;
-				} else if (intensity > 1) {
-					intensity = 1;
+		final float[][] kernel = new float[radiusMax * 2 + 1][radiusMax * 2 + 1];
+		
+		for (int i = -radiusMax; i <= radiusMax; i++) {
+			for (int j = -radiusMax; j <= radiusMax; j++) {
+				if (i * i + j * j <= (radius + 0.375) * (radius + 0.375)) {
+					kernel[i + radiusMax][j + radiusMax] = 1;
 				}
-				kernel[x][y] = intensity;
 			}
 		}
-		kernel[offset][offset] = 0;
+		kernel[radiusMax][radiusMax] = 0;
 		
 		// Save the kernel for display
-		Interface.lastKernel = kernel;
+		UserInterface.lastKernel = kernel;
 		
 		final float[][][] newImage = new float[3][width][height];
 		// Run this in parallel
@@ -708,40 +739,41 @@ public class Algorithms {
 					// Convolve over the image
 					for (int x = threadOffset; x < width; x += numThreads) {
 						for (int y = 0; y < height; y++) {
-							// (original pixel) = ((this pixel) - Sum(weight[i] * pixel[i])) / (this pixel weight)
 							
-							float weightedR = 0;
-							float weightedG = 0;
-							float weightedB = 0;
-							float sum = 1;
-							for (int x2 = -offset; x2 <= offset; x2++) {
-								if (x2 + x < 0 || x2 + x >= width) {
-									continue;
-								}
-								for (int y2 =  -offset; y2 <= offset; y2++) {
-									if (y2 + y < 0 || y2 + y >= height ||
-											kernel[x2 + offset][y2 + offset] == 0) {
-										continue;
+							float sumR = 0;
+							float sumG = 0;
+							float sumB = 0;
+							int count = 0;
+							
+							// Sum over all the pixels inside the disk
+							for (int i = -radiusMax; i <= radiusMax; i++) {
+								for (int j = -radiusMax; j <= radiusMax; j++) {
+									int xIndex = x + i;
+									int yIndex = y + j;
+									if (xIndex >= 0 && xIndex < width && yIndex >= 0 && yIndex < height) {
+										if (i * i + j * j <= (radius + 0.375) * (radius + 0.375)) {
+											sumR += originalImage[0][xIndex][yIndex];
+											sumG += originalImage[1][xIndex][yIndex];
+											sumB += originalImage[2][xIndex][yIndex];
+											count++;
+										}
 									}
-									
-									weightedR += kernel[x2 + offset][y2 + offset] * image[0][x + x2][y + y2];
-									weightedG += kernel[x2 + offset][y2 + offset] * image[1][x + x2][y + y2];
-									weightedB += kernel[x2 + offset][y2 + offset] * image[2][x + x2][y + y2];
-									sum += kernel[x2 + offset][y2 + offset];
 								}
 							}
 							
-							weightedR = (image[0][x][y] - weightedR / sum) * sum;
-							weightedG = (image[1][x][y] - weightedG / sum) * sum;
-							weightedB = (image[2][x][y] - weightedB / sum) * sum;
-							
-							newImage[0][x][y] = weightedR * newWeight + image[0][x][y] * (1 - newWeight);
-							newImage[1][x][y] = weightedG * newWeight + image[1][x][y] * (1 - newWeight);
-							newImage[2][x][y] = weightedB * newWeight + image[2][x][y] * (1 - newWeight);
+							// Subtract the average color from the original image
+							sumR = originalImage[0][x][y] - sumR / count;
+							sumG = originalImage[1][x][y] - sumG / count;
+							sumB = originalImage[2][x][y] - sumB / count;
+
+							// Scale the difference and add it back to the original image
+							newImage[0][x][y] = originalImage[0][x][y] + sumR * weight;
+							newImage[1][x][y] = originalImage[1][x][y] + sumG * weight;
+							newImage[2][x][y] = originalImage[2][x][y] + sumB * weight;
 						}
 						
-						if (threadOffset == 0) {
-							Interface.updateProgress((double)x/width);
+						if (threadOffset == 0 && (x % 50 == 0)) {
+							UserInterface.updateProgress((double)x/width);
 						}
 						
 						// Exit early if the effect has been canceled
@@ -763,8 +795,9 @@ public class Algorithms {
 				Thread.sleep(1);
 			} catch (Exception e) {}
 		}
-		
-		Interface.updateProgress(1);
+
+		UserInterface.setProcessName("Sharpen (" + (System.currentTimeMillis() - startTime) + "ms)");
+		UserInterface.updateProgress(1);
 		
 		// Exit early if the effect has been canceled
 		if (ImageEffects.isCanceled) {
@@ -948,9 +981,7 @@ public class Algorithms {
 		int offset = width / 2;
 		for (int x = 0; x < width; x++) {
 			for (int y = 0; y < width; y++) {
-				float dist = (float)Math.hypot(x - offset, y - offset);
-				float intensity = (radius - dist + 0.5f);
-				if (intensity > 0) {
+				if (Math.hypot(x - offset, y - offset) < radius + 0.375) {
 					kernel[x][y] = true;
 				}
 			}
@@ -958,7 +989,7 @@ public class Algorithms {
 		
 		if (saveKernel) {
 			// Save this for a preview
-			Interface.lastKernel = boolArrayToFloat2D(kernel);
+			UserInterface.lastKernel = boolArrayToFloat2D(kernel);
 		}
 		
 		// Over-estimate the number of pixels in the inner and outer rings
@@ -1072,11 +1103,25 @@ public class Algorithms {
 		final int width = originalImage[0].length;
 		final int height = originalImage[0][0].length;
 		final float[][][] newImage = new float[3][width][height];
-
-		final long startTime = System.currentTimeMillis();
-		final int radiusMax = (int)Math.ceil(radius + 0.5);
 		
-		Interface.setProcessName("Blurring");
+		final long startTime = System.currentTimeMillis();
+		final int radiusMax = (int)Math.ceil(radius);
+		
+		UserInterface.setProcessName("Blurring");
+		
+		// This must have an odd width and height
+		final float[][] kernel = new float[radiusMax * 2 + 1][radiusMax * 2 + 1];
+		for (int i = -radiusMax; i <= radiusMax; i++) {
+			for (int j = -radiusMax; j <= radiusMax; j++) {
+				if (i * i + j * j <= (radius + 0.375) * (radius + 0.375)) {
+					kernel[i + radiusMax][j + radiusMax] = 1;
+					//print((i) + "," + (j));
+				}
+			}
+		}
+		
+		// Save the kernel for display
+		UserInterface.lastKernel = kernel;
 		
 		// Blur in parallel threads
 		final Thread[] threads = new Thread[numThreads];
@@ -1100,7 +1145,7 @@ public class Algorithms {
 									int xIndex = x + i;
 									int yIndex = y + j;
 									if (xIndex >= 0 && xIndex < width && yIndex >= 0 && yIndex < height) {
-										if (Math.sqrt(i * i + j * j) <= radius + 0.5) {
+										if (i * i + j * j <= (radius + 0.375) * (radius + 0.375)) {
 											sumR += originalImage[0][xIndex][yIndex];
 											sumG += originalImage[1][xIndex][yIndex];
 											sumB += originalImage[2][xIndex][yIndex];
@@ -1117,7 +1162,7 @@ public class Algorithms {
 						
 						// Update the progress
 						if ((threadOffset == 0) && (x % 8 == 0)) {
-							Interface.updateProgress((double)x/width);
+							UserInterface.updateProgress((double)x/width);
 						}
 						
 						// Exit early if the effect has been canceled
@@ -1143,8 +1188,8 @@ public class Algorithms {
 			e.printStackTrace();
 		}
 		
-		Interface.setProcessName("Blurring (" + (System.currentTimeMillis() - startTime) + "ms)");
-		Interface.updateProgress(1);
+		UserInterface.setProcessName("Blurring (" + (System.currentTimeMillis() - startTime) + "ms)");
+		UserInterface.updateProgress(1);
 		
 		// Exit early if the effect has been canceled
 		if (ImageEffects.isCanceled) {

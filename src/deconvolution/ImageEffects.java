@@ -108,13 +108,13 @@ public class ImageEffects {
 		final int windowHeight = 70 + 62 * numSliders;
 		final int windowWidth = 394;
 		
-		final JDialog frame = new JDialog(Interface.frame, title, JDialog.ModalityType.MODELESS);
+		final JDialog frame = new JDialog(UserInterface.frame, title, JDialog.ModalityType.MODELESS);
 		
 		frame.getContentPane().setPreferredSize(new Dimension(windowWidth, windowHeight));
 		frame.pack();
 		frame.setLayout(null);
 		frame.setResizable(false);
-		frame.setLocationRelativeTo(Interface.frame);
+		frame.setLocationRelativeTo(UserInterface.frame);
 		
 		// This is only called when the user clicks the X button
 		frame.addWindowListener(new WindowListener() {
@@ -122,9 +122,9 @@ public class ImageEffects {
 				isDialogShowing = false;
 				
 				// Draw the unmodified image back
-				Interface.previewImage = Algorithms.arrayToImage(Algorithms.imageArray);
-				Interface.lastKernel = null;
-				Interface.redrawPreviewImage();
+				UserInterface.previewImage = Algorithms.arrayToImage(Algorithms.imageArray);
+				UserInterface.lastKernel = null;
+				UserInterface.redrawPreviewImage();
 				frame.dispose();
 				
 				previewImage = null;
@@ -155,7 +155,7 @@ public class ImageEffects {
 						
 						// Close the frame
 						frame.dispose();
-						Interface.updateProgress(1);
+						UserInterface.updateProgress(1);
 						isDialogShowing = false;
 						previewImage = null;
 						
@@ -173,9 +173,9 @@ public class ImageEffects {
 		cancelButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				// Draw the unmodified image back
-				Interface.previewImage = Algorithms.arrayToImage(Algorithms.imageArray);
-				Interface.lastKernel = null;
-				Interface.redrawPreviewImage();
+				UserInterface.previewImage = Algorithms.arrayToImage(Algorithms.imageArray);
+				UserInterface.lastKernel = null;
+				UserInterface.redrawPreviewImage();
 				frame.dispose();
 
 				isDialogShowing = false;
@@ -188,7 +188,7 @@ public class ImageEffects {
 				
 				// Special case for OpenGL:
 				// Effects are never applied, so if we just closed the dialog, then just re-display the original image.
-				Interface.displayOriginalPreviewOpenGL();
+				UserInterface.displayOriginalPreviewOpenGL();
 			}
 		});
 		frame.add(cancelButton);
@@ -227,13 +227,13 @@ public class ImageEffects {
 			frame.add(sep);
 			
 			// Attempt to read the radius from the file name, if it exists
-			if (Interface.fileName != null && sliderNames[i].equals("Radius")) {
-				int radiusTextPos = Interface.fileName.indexOf("Radius");
+			if (UserInterface.fileName != null && sliderNames[i].equals("Radius")) {
+				int radiusTextPos = UserInterface.fileName.indexOf("Radius");
 				if (radiusTextPos != -1) {
 					int radiusStringStartIndex = radiusTextPos + 7;
-					if (radiusStringStartIndex < Interface.fileName.length()) {
-						int endIndex1 = Interface.fileName.indexOf(' ', radiusStringStartIndex);
-						int endIndex2 = Interface.fileName.indexOf('.', radiusStringStartIndex);
+					if (radiusStringStartIndex < UserInterface.fileName.length()) {
+						int endIndex1 = UserInterface.fileName.indexOf(' ', radiusStringStartIndex);
+						int endIndex2 = UserInterface.fileName.indexOf('.', radiusStringStartIndex);
 						if (endIndex1 == -1) {
 							endIndex1 = 99999;
 						}
@@ -242,7 +242,7 @@ public class ImageEffects {
 						}
 						int minEndIndex = Math.min(endIndex1, endIndex2);
 						if (minEndIndex < 99999) {
-							String radiusText = Interface.fileName.substring(radiusStringStartIndex, minEndIndex);
+							String radiusText = UserInterface.fileName.substring(radiusStringStartIndex, minEndIndex);
 							try {
 								int newDefault = Integer.parseInt(radiusText);
 								if (newDefault >= minValues[i] && newDefault < maxValues[i]) {
@@ -407,8 +407,8 @@ public class ImageEffects {
 							option2 / divisor2, option3 / divisor3,
 							option4 / divisor4 * 0.12f + 1);
 				} else if (effectType == SHARPEN) {
-					newImageArray = Algorithms.sharpen(
-							previewImage, option1 / divisor1 / 100f, option2 / divisor2);
+					newImageArray = Algorithms.sharpenSwitch(
+							previewImage, option1 / divisor1, option2 / divisor2, commit);
 				} else if (effectType == FAST_METHOD) {
 					newImageArray = Algorithms.fastMethodSwitch(
 							previewImage, option1 / divisor1, option2 / divisor2,
@@ -436,19 +436,19 @@ public class ImageEffects {
 				}
 				
 				if (isCanceled) {
-					Interface.cancelProgress();
-					Interface.previewImage = Algorithms.arrayToImage(Algorithms.imageArray);
+					UserInterface.cancelProgress();
+					UserInterface.previewImage = Algorithms.arrayToImage(Algorithms.imageArray);
 				} else {
 					// This may be null if the GPU has rendered data directly to the BufferedImage
 					if (newImageArray != null) {
 						if (commit) {
 							Algorithms.imageArray = newImageArray;
-							Interface.lastKernel = null;
+							UserInterface.lastKernel = null;
 						}
-						Interface.previewImage = Algorithms.arrayToImage(newImageArray);
+						UserInterface.previewImage = Algorithms.arrayToImage(newImageArray);
 					}
 				}
-				Interface.redrawPreviewImage();
+				UserInterface.redrawPreviewImage();
 				
 				isRendering = false;
 				
@@ -465,7 +465,7 @@ public class ImageEffects {
 				// Special case for OpenGL:
 				// Effects are never applied, so if we just closed the dialog, then just re-display the original image.
 				if (commit) {
-					Interface.displayOriginalPreviewOpenGL();
+					UserInterface.displayOriginalPreviewOpenGL();
 				}
 			}
 		}).start();
